@@ -1,0 +1,21 @@
+
+1. The original files are found in '/data/home/natant/Negatives/Data/Encode690/wgEncodeAwgTfbsUniform'
+2. The original files are processed, from hg19 to hg38, the files are renamed and a metadata file is created.
+    -> script: /data/home/natant/Negatives/TFBS-negatives/utils/ENCODE_chip/Processing_OG_ENCODE.py
+    -> output: /data/home/natant/Negatives/Data/Encode690/ENCODE_hg38
+
+3. Make a selection of which files to use. We try to map the cell types to the MaxATAC data and only use those datasets that correspond to an identified cell type (as we have ATAC-seq data for those cell types).
+   Additionally, These files are processed so the peaks are reduced to 101bp centered around the highest signal.
+   -> script: /data/home/natant/Negatives/TFBS-negatives/utils/ENCODE_chip/Preparing_dataset.py
+   -> output: /data/home/natant/Negatives/Data/Encode690/ENCODE_hg38_subset_101bp
+
+NOPE NOT MERGING THE PEAKS!
+XXXX 4. Make cell type specific datasets where info for the TFs is merged. If the peaks overlap, extend the peaks and mention all the TFs seperated by commas.
+XXXX ?    -> script: /data/home/natant/Negatives/TFBS-negatives/utils/ENCODE_chip/Making_Cell_Type_ChIP_datasets.sh
+XXXX ?    -> output: /data/home/natant/Negatives/Data/Encode690/ENCODE_hg38_subset_celltype_merged
+
+4. Make cell type specific datasets where info for the TFs is merged.
+    -> script: /data/home/natant/Negatives/TFBS-negatives/utils/ENCODE_chip/Making_Cell_Type_ChIP_datasets_no_merging.sh
+    -> output: /data/home/natant/Negatives/Data/Encode690/ENCODE_hg38_subset_101bp_celltypes
+
+5. Add the open ATAC-seq regions (and resort the file!):

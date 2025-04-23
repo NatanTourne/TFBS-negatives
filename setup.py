@@ -1,18 +1,18 @@
 import sys
 from setuptools import setup, find_packages
 
-sys.path[0:0] = ["plmbind"]
-from version import __version__
+sys.path[0:0] = ["TFBS_negatives"]
+#from version import __version__
 
 setup(
-    name="plmbind",
+    name="TFBS_negatives",
     python_requires=">3.9.0",
     packages=find_packages(),
-    version=__version__,
+    #version=__version__,
     license="MIT",
-    description="TF binding prediction using protein language models (pLMs)",
+    description="TF binding prediction",
     author="Natan Tourné",
-    url="https://github.com/natantourne/thesis",
+    url="",
     install_requires=[
         "numpy",
         "torch",
