@@ -42,10 +42,12 @@ def create_h5torch(bed_folder, genome_file, out_folder):
 
     # Read the genome file
     tb = py2bit.open(genome_file)
+    chromosomes = tb.chroms()
+    chr_allow_list = [chrom for chrom in chromosomes.keys() if 'chrUn' not in chrom and 'chrM' not in chrom]
 
     # Initialize the chromosome allow list
-    chr_allow_list = list(np.arange(1, 23).astype(str)) + ["X", "Y"] 
-    chr_allow_list = ["chr" + c for c in chr_allow_list]
+    # chr_allow_list = list(np.arange(1, 23).astype(str)) + ["X", "Y"] 
+    # chr_allow_list = ["chr" + c for c in chr_allow_list]
 
 
     for bed_file in tqdm(os.listdir(bed_folder)):
@@ -64,8 +66,6 @@ def create_tf_presence_dataset(bed_file, output_h5t_file, chr_allow_list, tb):
 
     mapping = {"A": 0, "T": 1, "C": 2, "G": 3, "N": 4}
 
-    chr_allow_list = list(np.arange(1, 23).astype(str)) + ["X", "Y"]
-    chr_allow_list = ["chr" + c for c in chr_allow_list]
 
     peaks = pd.read_csv(bed_file, sep="\t", header=None, names=["chr", "start", "end", "TF"])
 
@@ -243,39 +243,40 @@ def create_dinucl_shuffled_negatives(h5t_loc, num_negs):
                     dtype_load="str",
                 )
 
-def create_dinucl_matched_negatives(h5t_loc, num_negs=1):
+def create_dinucl_matched_negatives(h5t_loc, num_negs=1, disable_neg_file_creation=True):
   if not os.path.exists(h5t_loc):
       raise FileNotFoundError(f"The folder {h5t_loc} does not exist.")
 
   h5t_files = [os.path.join(h5t_loc, file) for file in os.listdir(h5t_loc) if file.endswith(".h5t")]
 
-  for h5t_file in h5t_files:
-      celltype = os.path.splitext(os.path.basename(h5t_file))[0]
-      print(f"Processing file: {h5t_file}")
-      with h5torch.File(h5t_file, "r") as f:
-          genome = {k : f["unstructured"][k] for k in list(f["unstructured"]) if k.startswith("chr")}
+  if not disable_neg_file_creation:
+    for h5t_file in h5t_files:
+        celltype = os.path.splitext(os.path.basename(h5t_file))[0]
+        print(f"Processing file: {h5t_file}")
+        with h5torch.File(h5t_file, "r") as f:
+            genome = {k : f["unstructured"][k] for k in list(f["unstructured"]) if k.startswith("chr")}
 
-          prot_names = [name.decode("utf-8") for name in f["0/prot_names"]]
-          if "ATAC_peak" not in prot_names:
-              raise ValueError("ATAC_peak not found in prot_names.")
+            prot_names = [name.decode("utf-8") for name in f["0/prot_names"]]
+            if "ATAC_peak" not in prot_names:
+                raise ValueError("ATAC_peak not found in prot_names.")
 
-          # Exclude "ATAC_peak" explicitly
-          for i, TF in enumerate(tqdm(prot_names)):
-              if TF == "ATAC_peak":
-                  continue  # Skip ATAC_peak
+            # Exclude "ATAC_peak" explicitly
+            for i, TF in enumerate(tqdm(prot_names)):
+                if TF == "ATAC_peak":
+                    continue  # Skip ATAC_peak
 
-              index = i
-              pos_indices = np.where(f["central"][index, :] == 1)[0]
+                index = i
+                pos_indices = np.where(f["central"][index, :] == 1)[0]
 
-              # Write the positive sequences to a BED file
-              output_path = os.path.join(h5t_loc, f"{celltype}_{TF}_positives_temp.bed")
-              with open(output_path, "w") as bed_file:
-                  for j in tqdm(pos_indices):
-                      chr = f["1/peak_ix_to_chr"][:][j].astype(str)
-                      pos = f["1/peak_ix_to_pos"][:][j]
-                      start = pos - 50
-                      end = pos + 51
-                      bed_file.write(f"{chr}\t{start}\t{end}\t{TF}\n")
+                # Write the positive sequences to a BED file
+                output_path = os.path.join(h5t_loc, f"{celltype}_{TF}_positives_temp.bed")
+                with open(output_path, "w") as bed_file:
+                    for j in tqdm(pos_indices):
+                        chr = f["1/peak_ix_to_chr"][:][j].astype(str)
+                        pos = f["1/peak_ix_to_pos"][:][j]
+                        start = pos - 50
+                        end = pos + 51
+                        bed_file.write(f"{chr}\t{start}\t{end}\t{TF}\n")
 
 
   # create negs
@@ -302,7 +303,7 @@ def create_dinucl_matched_negatives(h5t_loc, num_negs=1):
           temp_file = pd.read_csv(bed_file_path, sep="\t", header=None, names=["chromosome", "start", "end"])
           chromosomes = temp_file["chromosome"].tolist()
           #! filter out the special chromosomes??????? I think it's quite a large precentage....? Should I just keep them in? (Right now The special ones are probably skipped because of data splitting!)
-          centers = ((temp_file["start"] + temp_file["end"]) // 2).tolist()
+          centers = ((temp_file["start"] + temp_file["end"]) // 2).tolist() # does this work????
           lengths = (temp_file["end"] - temp_file["start"]).tolist() #! the weird R script returns 100bp negatives for 101bp positives for some reason??????
           
           with h5torch.File(h5t_file, "a") as f:   
@@ -311,8 +312,8 @@ def create_dinucl_matched_negatives(h5t_loc, num_negs=1):
                   axis="unstructured",
                   name=f"sampled_negs_{TF}_pos",
                   mode="N-D",
-                  dtype_save="int8",
-                  dtype_load="int8",
+                  dtype_save="int64",
+                  dtype_load="int64",
               )
               f.register(
                   np.array(chromosomes).astype(bytes),

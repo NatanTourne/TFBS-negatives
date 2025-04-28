@@ -8,7 +8,7 @@ import warnings
 from functools import partial
 import numpy as np
 from torchmetrics.classification import MultilabelAUROC, MultilabelAveragePrecision
-from torchmetrics.functional.classification import multilabel_auroc, multilabel_average_precision, binary_auroc, binary_average_precision, multilabel_accuracy
+from torchmetrics.functional.classification import multilabel_average_precision, binary_auroc, binary_average_precision, binary_accuracy
 
 #! OLD FUNCTIONS:
 class MultiLabelLoss(nn.Module):
@@ -258,7 +258,7 @@ class multilabel(pl.LightningModule):
 
 
     def forward(self, x_DNA_in):
-        x_DNA = self.DNA_branch(self.embedding(torch.tensor(x_DNA_in)).permute(0, 2, 1))
+        x_DNA = self.DNA_branch(self.embedding(torch.tensor(x_DNA_in, dtype=torch.int)).permute(0, 2, 1))
         return x_DNA
         
     
@@ -274,7 +274,7 @@ class multilabel(pl.LightningModule):
         y = train_batch["central"]
 
         y_hat = self(x_DNA)
-        loss = self.loss_function(y_hat, y.float())
+        loss = self.loss_function(y_hat.squeeze(), y.float().squeeze())
 
 
         self.log('train_loss', loss, prog_bar=True)
@@ -282,21 +282,24 @@ class multilabel(pl.LightningModule):
     
 
     def validation_step(self, train_batch, batch_idx, dataloader_idx=0):
-        self.train()
+        x_DNA = train_batch["1/DNA_regions"]
+        y = train_batch["central"]
+        y_hat = self(x_DNA)
+        loss = self.loss_function(y_hat.squeeze(), y.float().squeeze())
+        if dataloader_idx == 0:
+            self.log('val_loss', loss, prog_bar=True, add_dataloader_idx=False)
+            AUROC = binary_auroc(y_hat.T.squeeze(), y.T.squeeze())
+            self.log("AUROC", AUROC, add_dataloader_idx=False)
+            Accuracy = binary_accuracy(y_hat.T.squeeze(), y.T.squeeze())
+            self.log("Accuracy", Accuracy, add_dataloader_idx=False)
 
-        with torch.set_grad_enabled(True):
-            x_DNA = train_batch["1/DNA_regions"]
-            y = train_batch["central"]
+        elif dataloader_idx == 1:
+            self.log('val_loss_HQ', loss, prog_bar=True, add_dataloader_idx=False)
+            AUROC = binary_auroc(y_hat.T.squeeze(), y.T.squeeze())
+            self.log("AUROC_HQ", AUROC, add_dataloader_idx=False)
+            Accuracy = binary_accuracy(y_hat.T.squeeze(), y.T.squeeze())
+            self.log("Accuracy_HQ", Accuracy, add_dataloader_idx=False)
 
-            y_hat = self(x_DNA)
-            loss = self.loss_function(y_hat, y.float())
-            self.log('val_loss', loss, prog_bar=True)
-            AUROC = multilabel_auroc(y_hat.T, y.T, num_labels=y_hat.shape[0])
-            self.log("AUROC", AUROC)
-            Accuracy = multilabel_accuracy(y_hat.T, y.T, num_labels=y_hat.shape[0])
-            self.log("Accuracy", Accuracy)
-
-        self.eval()
         return loss
             
 
