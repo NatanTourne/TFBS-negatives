@@ -84,15 +84,6 @@ def create_tf_presence_dataset(bed_file, output_h5t_file, chr_allow_list, tb):
     chr_old = ""
 
     for peak_index, peak in tqdm(filtered_peaks.iterrows()):
-        # if peak["chr"] not in chr_allow_list:
-        #     continue
-        # chr_now = peak["chr"]
-        # if chr_now != chr_old:
-        #     print(chr_now)
-        #     chr_old = chr_now
-        # if peak_index % 1000 == 0:
-        #     print(peak_index)
-
         tf_index = tf_to_index[peak["TF"]]
         tf_presence[tf_index, peak_index] = 1
 
@@ -243,7 +234,7 @@ def create_dinucl_shuffled_negatives(h5t_loc, num_negs):
                     dtype_load="str",
                 )
 
-def create_dinucl_matched_negatives(h5t_loc, num_negs=1, disable_neg_file_creation=True):
+def create_dinucl_matched_negatives(h5t_loc, num_negs=1, disable_neg_file_creation=False):
   if not os.path.exists(h5t_loc):
       raise FileNotFoundError(f"The folder {h5t_loc} does not exist.")
 
@@ -254,11 +245,7 @@ def create_dinucl_matched_negatives(h5t_loc, num_negs=1, disable_neg_file_creati
         celltype = os.path.splitext(os.path.basename(h5t_file))[0]
         print(f"Processing file: {h5t_file}")
         with h5torch.File(h5t_file, "r") as f:
-            genome = {k : f["unstructured"][k] for k in list(f["unstructured"]) if k.startswith("chr")}
-
             prot_names = [name.decode("utf-8") for name in f["0/prot_names"]]
-            if "ATAC_peak" not in prot_names:
-                raise ValueError("ATAC_peak not found in prot_names.")
 
             # Exclude "ATAC_peak" explicitly
             for i, TF in enumerate(tqdm(prot_names)):
@@ -302,7 +289,6 @@ def create_dinucl_matched_negatives(h5t_loc, num_negs=1, disable_neg_file_creati
           
           temp_file = pd.read_csv(bed_file_path, sep="\t", header=None, names=["chromosome", "start", "end"])
           chromosomes = temp_file["chromosome"].tolist()
-          #! filter out the special chromosomes??????? I think it's quite a large precentage....? Should I just keep them in? (Right now The special ones are probably skipped because of data splitting!)
           centers = ((temp_file["start"] + temp_file["end"]) // 2).tolist() # does this work????
           lengths = (temp_file["end"] - temp_file["start"]).tolist() #! the weird R script returns 100bp negatives for 101bp positives for some reason??????
           

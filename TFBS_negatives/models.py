@@ -285,13 +285,15 @@ class multilabel(pl.LightningModule):
         x_DNA = train_batch["1/DNA_regions"]
         y = train_batch["central"]
         y_hat = self(x_DNA)
-        loss = self.loss_function(y_hat.squeeze(), y.float().squeeze())
+        
         if dataloader_idx == 0:
+            loss = self.loss_function(y_hat.squeeze(), y.float().squeeze())
             self.log('val_loss', loss, prog_bar=True, add_dataloader_idx=False)
             AUROC = binary_auroc(y_hat.T.squeeze(), y.T.squeeze())
             self.log("AUROC", AUROC, add_dataloader_idx=False)
             Accuracy = binary_accuracy(y_hat.T.squeeze(), y.T.squeeze())
             self.log("Accuracy", Accuracy, add_dataloader_idx=False)
+            return loss
 
         elif dataloader_idx == 1:
             self.log('val_loss_HQ', loss, prog_bar=True, add_dataloader_idx=False)
@@ -299,8 +301,6 @@ class multilabel(pl.LightningModule):
             self.log("AUROC_HQ", AUROC, add_dataloader_idx=False)
             Accuracy = binary_accuracy(y_hat.T.squeeze(), y.T.squeeze())
             self.log("Accuracy_HQ", Accuracy, add_dataloader_idx=False)
-
-        return loss
             
 
     def on_validation_epoch_end(self):
@@ -309,3 +309,114 @@ class multilabel(pl.LightningModule):
 
     def get_TF_latent_vector(self, TF_emb):
         return self.prot_branch(TF_emb.permute(0, 2, 1))
+    
+
+class TFmodel(pl.LightningModule):
+    def __init__(
+        self,
+
+        # Model architecture
+        target_hsize=64,
+        n_blocks=2,
+        DNA_kernel_size=9,
+        progressive_channel_widening=True,
+        pooling_between_blocks=True,
+        DNA_dropout=0.25,
+
+        # training
+        learning_rate=1e-5,
+    ):
+        super(TFmodel, self).__init__()
+
+        self.learning_rate = learning_rate
+        self.loss_function = nn.BCEWithLogitsLoss()
+
+        # nucleotide encodings
+        nucleotide_weights = torch.FloatTensor(
+            [[1, 0, 0, 0],
+             [0, 1, 0, 0],
+             [0, 0, 1, 0],
+             [0, 0, 0, 1],
+             [0, 0, 0, 0]]
+            )
+        self.embedding = nn.Embedding.from_pretrained(nucleotide_weights)
+        self.best_metrics = {"AUROC": 0, "Accuracy": 0, "AUROC_HQ": 0, "Accuracy_HQ": 0}
+        self.update_best_metrics_HQ = False
+        
+        # DNA branch
+    
+        self.DNA_branch = EnformerConvStack(
+            input_hsize = 4,
+            target_hsize =target_hsize, 
+            n_blocks = n_blocks,
+            kernel_size = DNA_kernel_size, 
+            latent_size = 1, # because TF specific model
+            dropout=DNA_dropout,
+            progressive_channel_widening=progressive_channel_widening,
+            pooling_between_blocks=pooling_between_blocks,
+        )
+        
+        self.save_hyperparameters()
+
+
+
+    def forward(self, x_DNA_in):
+        x_DNA = self.DNA_branch(self.embedding(torch.tensor(x_DNA_in, dtype=torch.int)).permute(0, 2, 1))
+        return x_DNA
+        
+    
+    def configure_optimizers(self):
+        optimizer = optim.Adam([
+            {"params":self.DNA_branch.parameters(), "lr":self.learning_rate}
+            ])
+        return optimizer
+    
+
+    def training_step(self, train_batch, batch_idx):
+        x_DNA = train_batch["1/DNA_regions"]
+        y = train_batch["central"]
+
+        y_hat = self(x_DNA)
+        loss = self.loss_function(y_hat.squeeze(), y.float().squeeze())
+
+
+        self.log('train_loss', loss, prog_bar=True)
+        return loss
+    
+
+    def validation_step(self, train_batch, batch_idx, dataloader_idx=0):
+        x_DNA = train_batch["1/DNA_regions"]
+        y = train_batch["central"]
+        y_hat = self(x_DNA)
+        if dataloader_idx == 0:
+            loss = self.loss_function(y_hat.squeeze(), y.float().squeeze())
+            self.log('val_loss', loss, prog_bar=True, add_dataloader_idx=False)
+            AUROC = binary_auroc(y_hat.T.squeeze(), y.T.squeeze())
+            self.log("AUROC", AUROC, add_dataloader_idx=False)
+            Accuracy = binary_accuracy(y_hat.T.squeeze(), y.T.squeeze())
+            self.log("Accuracy", Accuracy, add_dataloader_idx=False)
+
+            if AUROC > self.best_metrics["AUROC"]:
+                self.best_metrics["AUROC"] = AUROC
+                self.best_metrics["Accuracy"] = Accuracy
+                self.update_best_metrics_HQ = True
+                self.log("best_AUROC", AUROC, add_dataloader_idx=False)
+                self.log("best_Accuracy", Accuracy, add_dataloader_idx=False)
+            return loss
+
+        elif dataloader_idx == 1:
+            loss_HQ = self.loss_function(y_hat.squeeze(), y.float().squeeze())
+            self.log('val_loss_HQ', loss_HQ, prog_bar=True, add_dataloader_idx=False)
+            AUROC = binary_auroc(y_hat.T.squeeze(), y.T.squeeze())
+            self.log("AUROC_HQ", AUROC, add_dataloader_idx=False)
+            Accuracy = binary_accuracy(y_hat.T.squeeze(), y.T.squeeze())
+            self.log("Accuracy_HQ", Accuracy, add_dataloader_idx=False)
+            if self.update_best_metrics_HQ:
+                # always update the HQ metrics if the normal metrics are updated!
+                self.best_metrics["AUROC_HQ"] = AUROC
+                self.best_metrics["Accuracy_HQ"] = Accuracy
+                self.log("best_AUROC_HQ", AUROC, add_dataloader_idx=False)
+                self.log("best_Accuracy_HQ", Accuracy, add_dataloader_idx=False)
+                self.update_best_metrics_HQ = False
+
+            
