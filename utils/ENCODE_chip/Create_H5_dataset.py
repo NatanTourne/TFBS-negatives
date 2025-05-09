@@ -279,7 +279,7 @@ def create_dinucl_matched_negatives(h5t_loc, num_negs=1, disable_neg_file_creati
       
       matching_files = [file for file in negative_bed_files if file.startswith(celltype)]
       for bed_file_name in tqdm(matching_files):
-          TF= bed_file_name.split("_")[1]
+          TF = "_".join(bed_file_name.split("_")[1:-3])  # Capture the full TF name, even with underscores
           bed_file_path = os.path.join(h5t_loc, bed_file_name)
           print(f"Processing negative bed file: {bed_file_path}")
           

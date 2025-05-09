@@ -46,7 +46,7 @@ if __name__ == "__main__":
     checkpoint_callback = ModelCheckpoint(
             monitor='val_loss',
             dirpath=args.output_dir,
-            filename=args.celltype + "_" + args.TF + "_" + args.neg_mode +"_CV-" + str(args.cross_val_set) + "_" + date + '_val_loss-{epoch:02d}-{val_loss:.2f}-{AUROC: .2f}',
+            filename=args.celltype + "_" + args.TF + "_" + args.neg_mode +"_CV-" + str(args.cross_val_set) + "_" + date + '_{epoch:02d}_{val_loss:.2f}_{AUROC:.2f}',
             mode="min"
             )
 
