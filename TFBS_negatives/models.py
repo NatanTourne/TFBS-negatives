@@ -409,7 +409,7 @@ class TFmodel(pl.LightningModule):
             self.log('val_loss_HQ', loss_HQ, prog_bar=True, add_dataloader_idx=False)
             AUROC = binary_auroc(y_hat.T.squeeze(), y.T.squeeze())
             self.log("AUROC_HQ", AUROC, add_dataloader_idx=False)
-            Accuracy = binary_accuracy(y_hat.T.squeeze(), y.T.squeeze())
+            Accuracy = binary_accuracy(y_hat.squeeze(-1).T, y.T)
             self.log("Accuracy_HQ", Accuracy, add_dataloader_idx=False)
             if self.update_best_metrics_HQ:
                 # always update the HQ metrics if the normal metrics are updated!
@@ -420,3 +420,24 @@ class TFmodel(pl.LightningModule):
                 self.update_best_metrics_HQ = False
 
             
+
+class TFmodel_HQ(TFmodel):
+    def validation_step(self, train_batch, batch_idx, dataloader_idx=0):
+        x_DNA = train_batch["1/DNA_regions"]
+        y = train_batch["central"]
+        y_hat = self(x_DNA)
+        if dataloader_idx == 0:
+            loss = self.loss_function(y_hat.squeeze(), y.float().squeeze())
+            self.log('val_loss', loss, prog_bar=True, add_dataloader_idx=False)
+            AUROC = binary_auroc(y_hat.T.squeeze(), y.T.squeeze())
+            self.log("AUROC", AUROC, add_dataloader_idx=False)
+            Accuracy = binary_accuracy(y_hat.squeeze(-1).T, y.T)
+            self.log("Accuracy", Accuracy, add_dataloader_idx=False)
+
+            if AUROC > self.best_metrics["AUROC"]:
+                self.best_metrics["AUROC"] = AUROC
+                self.best_metrics["Accuracy"] = Accuracy
+                self.update_best_metrics_HQ = True
+                self.log("best_AUROC", AUROC, add_dataloader_idx=False)
+                self.log("best_Accuracy", Accuracy, add_dataloader_idx=False)
+            return loss
