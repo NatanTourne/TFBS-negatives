@@ -389,6 +389,9 @@ class DataModule(pl.LightningDataModule):
         self.val_data = neg_class(f, TF=TF, subset=all_orderings[cross_val_set][1])
         self.HQ_val_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][1])
 
+        self.test_data = neg_class(f, TF=TF, subset=all_orderings[cross_val_set][2])
+        self.HQ_test_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][2])
+
 
     def setup(self, stage=None):
         pass
@@ -399,6 +402,8 @@ class DataModule(pl.LightningDataModule):
     def val_dataloader(self):
         return [torch.utils.data.DataLoader(self.val_data, shuffle=True, batch_size=self.batch_size, num_workers=2), torch.utils.data.DataLoader(self.HQ_val_data, shuffle=False, batch_size=self.batch_size, num_workers=2)]
 
+    def test_dataloader(self):
+        return [torch.utils.data.DataLoader(self.test_data, shuffle=True, batch_size=self.batch_size, num_workers=2), torch.utils.data.DataLoader(self.HQ_test_data, shuffle=False, batch_size=self.batch_size, num_workers=2)]
 
 class DataModule_HQ(pl.LightningDataModule):
     def __init__(
@@ -424,6 +429,7 @@ class DataModule_HQ(pl.LightningDataModule):
         # depending on the cross_val_set, take different subsets of the data for train, val, test
         self.train_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][0])
         self.val_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][1])
+        self.test_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][2])
 
 
     def setup(self, stage=None):
@@ -435,6 +441,8 @@ class DataModule_HQ(pl.LightningDataModule):
     def val_dataloader(self):
         return torch.utils.data.DataLoader(self.val_data, shuffle=False, batch_size=self.batch_size, num_workers=2)
 
+    def test_dataloader(self):
+        return torch.utils.data.DataLoader(self.test_data, shuffle=False, batch_size=self.batch_size, num_workers=2)
 
 class DataModule_sanity_check(DataModule):
     def val_dataloader(self):

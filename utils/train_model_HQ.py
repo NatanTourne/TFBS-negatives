@@ -29,6 +29,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_blocks", type=int, default=2, help="Number of blocks in the model.")
     parser.add_argument("--target_hsize", type=int, default=128, help="Target hidden size for the model.")
     parser.add_argument("--group_name", type=str, default="default", help="Group name for the model.")
+    parser.add_argument("--test", action="store_true", help="Run in test mode.")
 
     args = parser.parse_args()
 
@@ -63,3 +64,11 @@ if __name__ == "__main__":
     )
 
     trainer.fit(model, Dmod)
+    if args.test:
+        best_model_path = checkpoint_callback.best_model_path  # Re-fetch after training
+        if best_model_path:
+            print(f"Loading best model from: {best_model_path}")
+            best_model = TFmodel_HQ.load_from_checkpoint(best_model_path)
+            trainer.test(best_model, datamodule=Dmod)
+        else:
+            warnings.warn("No best model found — skipping test.")

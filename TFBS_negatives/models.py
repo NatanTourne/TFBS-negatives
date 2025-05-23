@@ -355,7 +355,10 @@ class TFmodel(pl.LightningModule):
             progressive_channel_widening=progressive_channel_widening,
             pooling_between_blocks=pooling_between_blocks,
         )
-        
+        self.test_outputs_y = []
+        self.test_outputs_y_hat = []
+        self.HQ_test_outputs_y = []
+        self.HQ_test_outputs_y_hat = []
         self.save_hyperparameters()
 
 
@@ -419,6 +422,32 @@ class TFmodel(pl.LightningModule):
                 self.log("best_Accuracy_HQ", Accuracy, add_dataloader_idx=False)
                 self.update_best_metrics_HQ = False
 
+    def test_step(self, batch, batch_idx, dataloader_idx=0):
+        x_DNA = batch["1/DNA_regions"]
+        y = batch["central"]
+        y_hat = self(x_DNA)
+        if dataloader_idx == 0:
+            self.test_outputs_y.append(y)
+            self.test_outputs_y_hat.append(y_hat)
+        elif dataloader_idx == 1:
+            self.HQ_test_outputs_y.append(y)
+            self.HQ_test_outputs_y_hat.append(y_hat)
+
+    def on_test_epoch_end(self):
+        y_hat = torch.cat(self.test_outputs_y_hat, dim=0).squeeze()
+        y_true = torch.cat(self.test_outputs_y, dim=0)
+        AUROC = binary_auroc(y_hat, y_true)
+        Accuracy = binary_accuracy(y_hat, y_true)
+        self.log("test_AUROC", AUROC, prog_bar=True)
+        self.log("test_Accuracy", Accuracy, prog_bar=True)
+
+        y_hat_HQ = torch.cat(self.HQ_test_outputs_y_hat, dim=0).squeeze()
+        y_true_HQ = torch.cat(self.HQ_test_outputs_y, dim=0)
+        AUROC_HQ = binary_auroc(y_hat_HQ, y_true_HQ)
+        Accuracy_HQ = binary_accuracy(y_hat_HQ, y_true_HQ)
+        self.log("test_AUROC_HQ", AUROC_HQ, prog_bar=True)
+        self.log("test_Accuracy_HQ", Accuracy_HQ, prog_bar=True)
+
             
 
 class TFmodel_HQ(TFmodel):
@@ -441,3 +470,12 @@ class TFmodel_HQ(TFmodel):
                 self.log("best_AUROC", AUROC, add_dataloader_idx=False)
                 self.log("best_Accuracy", Accuracy, add_dataloader_idx=False)
             return loss
+        
+    def on_test_epoch_end(self):
+        # We only need to modify this on epoch end, the test_step "elif dataloader_idx == 1:" will just never be used!
+        y_hat = torch.cat(self.test_outputs_y_hat, dim=0).squeeze()
+        y_true = torch.cat(self.test_outputs_y, dim=0)
+        AUROC = binary_auroc(y_hat, y_true)
+        Accuracy = binary_accuracy(y_hat, y_true)
+        self.log("test_AUROC", AUROC, prog_bar=True)
+        self.log("test_Accuracy", Accuracy, prog_bar=True)

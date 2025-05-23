@@ -102,12 +102,11 @@ parts = [part1, part2, part3]
 
 cell_types = ["MCF-7", "K562", "GM12878", "HepG2", "HEK293", "A549"]
 
-AUROC_scores = {}
-accuracy_scores = {}
+
 for celltype in cell_types:
+    AUROC_scores = {}
+    accuracy_scores = {}
     print("celltype: " + celltype)
-    tf_auroc_scores = {}
-    tf_accuracy_scores = {}
     for fold in range(3):
         print("fold: " + str(fold))
         file = h5torch.File(data_folder+celltype+".h5t", 'r')
@@ -142,7 +141,7 @@ for celltype in cell_types:
                         scores_rev = pssm.calculate(rc_seq)
                         max_rev = np.nanmax(scores_rev) if len(scores_rev)>0 else float('-inf')
                         # Take the best (highest) score
-                        best_score.append(np.nanmax(max_fwd, max_rev))
+                        best_score.append(np.nanmax([max_fwd, max_rev]))
 
                     results.setdefault(TF, []).append(np.nanmax(best_score))
 
