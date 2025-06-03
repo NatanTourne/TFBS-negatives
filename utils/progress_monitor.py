@@ -12,29 +12,30 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     output_folder = args.output_folder
-
-    output_folder = "/data/home/natant/Negatives/Runs/full_run_1/"
     file_path = os.path.join(output_folder, "model_combinations.csv")
     model_combinations_df = pd.read_csv(file_path)
 
     correct_neg_mode_names = {
         "dinucl_shuffled": "dinucl-shuffled",
-        "dinucl_sampled": "dinucl-sampled",
-        "shuffled": "shuffled",
-        "neighbors": "neighbors"
+        "dinucl_sampled": "dinucl-sampled"
     }
     correct_neg_mode_names_reverse = {v: k for k, v in correct_neg_mode_names.items()}
 
     def get_current_df():
         ckpt_files = [f for f in os.listdir(output_folder) if f.endswith('.ckpt')]
         updated_ckpt_files = [
-            f.replace(old, new) for f in ckpt_files for old, new in correct_neg_mode_names.items() if old in f
+            f.replace(old, new) if old in f else f
+            for f in ckpt_files
+            for old, new in correct_neg_mode_names.items()
+            if old in f or all(k not in f for k in correct_neg_mode_names)
         ]
+        # Remove duplicates if a file matches multiple keys
+        updated_ckpt_files = list(dict.fromkeys(updated_ckpt_files))
         data = []
         for file in updated_ckpt_files:
             celltype = file.split("_")[0]
             TF = "_".join(file.split("_")[1:-8])
-            neg_mode = correct_neg_mode_names_reverse[file.split("_")[-8]]
+            neg_mode = file.split("_")[-8]
             CV = file.split("_")[-7]
             date = file.split("_")[-6]
             time = file.split("_")[-5]

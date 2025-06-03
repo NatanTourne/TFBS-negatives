@@ -62,7 +62,8 @@ if __name__ == "__main__":
         accelerator="gpu",
         devices=args.devices,
         logger=wandb_logger,
-        callbacks=callback_list
+        callbacks=callback_list,
+        log_every_n_steps=10
     )
 
     trainer.fit(model, Dmod)

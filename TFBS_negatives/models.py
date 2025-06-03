@@ -327,7 +327,6 @@ class TFmodel(pl.LightningModule):
         learning_rate=1e-5,
     ):
         super(TFmodel, self).__init__()
-
         self.learning_rate = learning_rate
         self.loss_function = nn.BCEWithLogitsLoss()
 
@@ -359,6 +358,7 @@ class TFmodel(pl.LightningModule):
         self.test_outputs_y_hat = []
         self.HQ_test_outputs_y = []
         self.HQ_test_outputs_y_hat = []
+        self.val_outputs = {0: [], 1: []}
         self.save_hyperparameters()
 
 
@@ -387,16 +387,31 @@ class TFmodel(pl.LightningModule):
         return loss
     
 
-    def validation_step(self, train_batch, batch_idx, dataloader_idx=0):
-        x_DNA = train_batch["1/DNA_regions"]
-        y = train_batch["central"]
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        x_DNA = batch["1/DNA_regions"]
+        y = batch["central"]
         y_hat = self(x_DNA)
+
+        self.val_outputs[dataloader_idx].append((y_hat.detach(), y.detach()))
+
+        loss = self.loss_function(y_hat.squeeze(), y.float().squeeze())
+
         if dataloader_idx == 0:
-            loss = self.loss_function(y_hat.squeeze(), y.float().squeeze())
             self.log('val_loss', loss, prog_bar=True, add_dataloader_idx=False)
-            AUROC = binary_auroc(y_hat.T.squeeze(), y.T.squeeze())
+        else:
+            self.log('val_loss_HQ', loss, prog_bar=True, add_dataloader_idx=False)
+
+    def on_validation_epoch_end(self):
+        # Process dataloader 0 (standard validation)
+        if self.val_outputs[0]:
+            y_hat_all, y_all = zip(*self.val_outputs[0])
+            y_hat_all = torch.cat(y_hat_all).squeeze()
+            y_all = torch.cat(y_all).squeeze()
+
+            AUROC = binary_auroc(y_hat_all, y_all)
+            Accuracy = binary_accuracy(y_hat_all, y_all)
+
             self.log("AUROC", AUROC, add_dataloader_idx=False)
-            Accuracy = binary_accuracy(y_hat.T.squeeze(), y.T.squeeze())
             self.log("Accuracy", Accuracy, add_dataloader_idx=False)
 
             if AUROC > self.best_metrics["AUROC"]:
@@ -405,22 +420,29 @@ class TFmodel(pl.LightningModule):
                 self.update_best_metrics_HQ = True
                 self.log("best_AUROC", AUROC, add_dataloader_idx=False)
                 self.log("best_Accuracy", Accuracy, add_dataloader_idx=False)
-            return loss
 
-        elif dataloader_idx == 1:
-            loss_HQ = self.loss_function(y_hat.squeeze(), y.float().squeeze())
-            self.log('val_loss_HQ', loss_HQ, prog_bar=True, add_dataloader_idx=False)
-            AUROC = binary_auroc(y_hat.T.squeeze(), y.T.squeeze())
-            self.log("AUROC_HQ", AUROC, add_dataloader_idx=False)
-            Accuracy = binary_accuracy(y_hat.squeeze(-1).T, y.T)
-            self.log("Accuracy_HQ", Accuracy, add_dataloader_idx=False)
+        # Process dataloader 1 (HQ validation)
+        if self.val_outputs[1]:
+            y_hat_HQ_all, y_HQ_all = zip(*self.val_outputs[1])
+            y_hat_HQ_all = torch.cat(y_hat_HQ_all).squeeze()
+            y_HQ_all = torch.cat(y_HQ_all).squeeze()
+
+            AUROC_HQ = binary_auroc(y_hat_HQ_all, y_HQ_all)
+            Accuracy_HQ = binary_accuracy(y_hat_HQ_all, y_HQ_all)
+
+            self.log("AUROC_HQ", AUROC_HQ, add_dataloader_idx=False)
+            self.log("Accuracy_HQ", Accuracy_HQ, add_dataloader_idx=False)
+
             if self.update_best_metrics_HQ:
-                # always update the HQ metrics if the normal metrics are updated!
-                self.best_metrics["AUROC_HQ"] = AUROC
-                self.best_metrics["Accuracy_HQ"] = Accuracy
-                self.log("best_AUROC_HQ", AUROC, add_dataloader_idx=False)
-                self.log("best_Accuracy_HQ", Accuracy, add_dataloader_idx=False)
+                self.best_metrics["AUROC_HQ"] = AUROC_HQ
+                self.best_metrics["Accuracy_HQ"] = Accuracy_HQ
+                self.log("best_AUROC_HQ", AUROC_HQ, add_dataloader_idx=False)
+                self.log("best_Accuracy_HQ", Accuracy_HQ, add_dataloader_idx=False)
                 self.update_best_metrics_HQ = False
+
+        # Clear memory
+        self.val_outputs = {0: [], 1: []}
+
 
     def test_step(self, batch, batch_idx, dataloader_idx=0):
         x_DNA = batch["1/DNA_regions"]
@@ -451,26 +473,6 @@ class TFmodel(pl.LightningModule):
             
 
 class TFmodel_HQ(TFmodel):
-    def validation_step(self, train_batch, batch_idx, dataloader_idx=0):
-        x_DNA = train_batch["1/DNA_regions"]
-        y = train_batch["central"]
-        y_hat = self(x_DNA)
-        if dataloader_idx == 0:
-            loss = self.loss_function(y_hat.squeeze(), y.float().squeeze())
-            self.log('val_loss', loss, prog_bar=True, add_dataloader_idx=False)
-            AUROC = binary_auroc(y_hat.T.squeeze(), y.T.squeeze())
-            self.log("AUROC", AUROC, add_dataloader_idx=False)
-            Accuracy = binary_accuracy(y_hat.squeeze(-1).T, y.T)
-            self.log("Accuracy", Accuracy, add_dataloader_idx=False)
-
-            if AUROC > self.best_metrics["AUROC"]:
-                self.best_metrics["AUROC"] = AUROC
-                self.best_metrics["Accuracy"] = Accuracy
-                self.update_best_metrics_HQ = True
-                self.log("best_AUROC", AUROC, add_dataloader_idx=False)
-                self.log("best_Accuracy", Accuracy, add_dataloader_idx=False)
-            return loss
-        
     def on_test_epoch_end(self):
         # We only need to modify this on epoch end, the test_step "elif dataloader_idx == 1:" will just never be used!
         y_hat = torch.cat(self.test_outputs_y_hat, dim=0).squeeze()
