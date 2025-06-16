@@ -12,6 +12,7 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import EarlyStopping
 from datetime import datetime
 import argparse
+import wandb
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a model with specified parameters.")
@@ -53,7 +54,9 @@ if __name__ == "__main__":
     early_stop = EarlyStopping(args.early_stop_metric, patience=args.early_stop_patience, mode=args.early_stop_mode)
 
     callback_list = [checkpoint_callback, early_stop]
-    wandb_logger = WandbLogger(project="Negatives", entity="ntourne", config=vars(args))
+    run_name = f"{args.celltype}_{args.TF}_CV{args.cross_val_set}_{date}"
+    wandb_logger = WandbLogger(project="Negatives", entity="ntourne", config=vars(args), name=run_name, group=args.group_name)
+
 
     trainer = pl.Trainer(
         max_steps=5_000_000,
@@ -65,10 +68,31 @@ if __name__ == "__main__":
 
     trainer.fit(model, Dmod)
     if args.test:
-        best_model_path = checkpoint_callback.best_model_path  # Re-fetch after training
+        best_model_path = checkpoint_callback.best_model_path
         if best_model_path:
             print(f"Loading best model from: {best_model_path}")
+            
+            # ✅ Close any previous WandB run (if any)
+            wandb.finish()
+
+            # ✅ Start a new WandB run for testing
+            test_logger = WandbLogger(
+                project="Negatives",
+                entity="ntourne",
+                name=f"TEST_{run_name}",
+                group=args.group_name + "_TEST",
+                config=vars(args)
+            )
+
+            # ✅ Create a new trainer with the test logger
+            test_trainer = pl.Trainer(
+                accelerator="gpu",
+                devices=args.devices,
+                logger=test_logger,
+            )
+
+            # ✅ Load best model and run test
             best_model = TFmodel_HQ.load_from_checkpoint(best_model_path)
-            trainer.test(best_model, datamodule=Dmod)
+            test_trainer.test(best_model, datamodule=Dmod)
         else:
             warnings.warn("No best model found — skipping test.")

@@ -16,8 +16,29 @@ def create_ct_specific_sampled_negatives(h5t_loc):
 
     for h5t_file in tqdm(h5t_files):
         print(f"Processing file: {h5t_file}")
+        # Only process files for specific cell types
+        celltypes = ["GM12878", "HepG2", "K562", "A549"]
+        if not any(ct in h5t_file for ct in celltypes):
+            print(f"Skipping file {h5t_file} (not in selected cell types)")
+            continue
+        
         with h5torch.File(h5t_file, 'a') as file:
             prot_names = file["0/prot_names"][:]
+
+            # Check if all expected ct_sampled_{TF}_neg_indices already exist
+            all_exist = True
+            for TF in prot_names:
+                if TF == b"ATAC_peak":
+                    continue
+                neg_name = f"ct_sampled_{TF.decode('utf-8')}_neg_indices"
+                if neg_name not in file["unstructured"].keys():
+                    all_exist = False
+                    break
+
+            if all_exist:
+                print("All ct_sampled_{TF}_neg_indices datasets already exist. Skipping calculations for this file.")
+                continue
+
             central = file["central"][:]
             atac_idx = np.where(prot_names == b"ATAC_peak")[0]
             mask_atac_peak = (central[atac_idx, :] == 1).any(axis=0)

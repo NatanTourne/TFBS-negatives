@@ -269,6 +269,76 @@ class neighbor_negs(h5torch.Dataset):
         
         return sample
     
+class celltype_negatives(h5torch.Dataset):
+    def __init__(
+        self,
+        file,
+        TF,
+        subset=None
+    ):
+        super().__init__(file, in_memory=True)
+        self.subset = subset
+        self.TF = TF
+
+        self.prot_mask = file["0/prot_names"][:] == TF.encode()
+        self.central = file["central"][self.prot_mask].squeeze() #only take data for that TF
+        self.pos_mask = self.central == 1 #only take the positive samples
+
+        self.central = self.central[self.pos_mask] #subset data
+
+        self.peak_ix_to_pos = file["1/peak_ix_to_pos"][self.pos_mask]
+        self.peak_ix_to_len = file["1/peak_ix_to_len"][self.pos_mask]
+        self.peak_ix_to_chr = file["1/peak_ix_to_chr"][self.pos_mask]
+
+        
+        pos_subset_mask = np.isin(self.peak_ix_to_chr.astype(str), subset) #only take the right (training, val) positions
+        self.peak_ix_to_pos = self.peak_ix_to_pos[pos_subset_mask]
+        self.peak_ix_to_len = self.peak_ix_to_len[pos_subset_mask]
+        self.peak_ix_to_chr = self.peak_ix_to_chr[pos_subset_mask]
+
+        self.mapping = {"A": 0, "T": 1, "C": 2, "G": 3, "N": 4}
+        self.rev_mapping = {v : k for k, v in self.mapping.items()}
+
+        self.genome = {k : file["unstructured"][k] for k in list(file["unstructured"]) if k.startswith("chr")}
+        self.file=file
+        
+        neg_indices = file["unstructured/ct_sampled_"+TF+"_neg_indices"][:]
+        neg_indices = np.sort(neg_indices)
+        neg_chr = file["1/peak_ix_to_chr"][neg_indices]
+        neg_subset_mask = np.isin(neg_chr.astype(str), subset)
+        self.neg_indices = neg_indices[neg_subset_mask]
+        self.neg_peak_ix_to_pos = file["1/peak_ix_to_pos"][self.neg_indices]
+        self.neg_peak_ix_to_len = file["1/peak_ix_to_len"][self.neg_indices]
+        self.neg_peak_ix_to_chr = file["1/peak_ix_to_chr"][self.neg_indices]
+        self.neg_len = len(self.neg_indices)
+
+
+
+    def __len__(self):
+        return len(self.peak_ix_to_pos)+self.neg_len # total number of datapoints is positive + negative samples
+    
+
+    def __getitem__(self, index):
+
+        sample = {}
+        sample["0/prot_names"] = self.TF
+        
+        if index < len(self.peak_ix_to_pos): # take a positive
+            chr = self.peak_ix_to_chr[index].decode()
+            pos = self.peak_ix_to_pos[index]
+            sample["1/DNA_regions"] = self.genome[chr][pos-50:pos+51]
+            sample["central"] = 1
+
+        else: # take a negative
+        # get negative samples
+            neg_index = index-len(self.peak_ix_to_pos) #convert the index!
+            chr = self.neg_peak_ix_to_chr[neg_index].decode()
+            pos = self.neg_peak_ix_to_pos[neg_index]
+            sample["1/DNA_regions"] = self.genome[chr][pos-50:pos+51]
+            sample["central"] = 0
+        
+        return sample
+    
 
 class HQ_dataset(h5torch.Dataset):
     """
@@ -369,7 +439,8 @@ class DataModule(pl.LightningDataModule):
             "neighbors": neighbor_negs,
             "shuffled": shuffled_negs,
             "dinucl_shuffled": dinucl_shuffled_negs,
-            "dinucl_sampled": dinucl_sampled_negs
+            "dinucl_sampled": dinucl_sampled_negs,
+            "celltype": celltype_negatives,
         }
 
         if neg_mode not in neg_modes:
