@@ -143,9 +143,11 @@ class shuffled_negs(h5torch.Dataset):
         self,
         file,
         TF,
-        subset=None
+        subset=None,
+        deterministic_sampling=True
     ):
         super().__init__(file, in_memory=True)
+        self.deterministic_sampling = deterministic_sampling
         self.subset = subset
         self.TF = TF
 
@@ -177,6 +179,10 @@ class shuffled_negs(h5torch.Dataset):
     
 
     def __getitem__(self, index):
+        if self.deterministic_sampling:
+            rng = np.random.RandomState(index)
+        else:
+            rng = np.random.RandomState()
 
         sample = {}
         sample["0/prot_names"] = self.TF
@@ -194,7 +200,7 @@ class shuffled_negs(h5torch.Dataset):
             chr = self.peak_ix_to_chr[converted_index].decode()
             pos = self.peak_ix_to_pos[converted_index]
             DNA = self.genome[chr][pos-50:pos+51]
-            shuffled_DNA =  np.random.permutation(DNA)
+            shuffled_DNA = rng.permutation(DNA)
             sample["1/DNA_regions"] = shuffled_DNA
             sample["central"] = 0
         
@@ -408,18 +414,108 @@ class HQ_dataset(h5torch.Dataset):
         elif len < 101:
             #! PLACEHOLDER JUST TAKING 101 bp FOR NOW
             sample["1/DNA_regions"] = self.genome[chr][pos-50:pos+51]
-            warnings.warn("The handling of sequences with length < 101 is currently a placeholder and must be updated.")
+            #warnings.warn("The handling of sequences with length < 101 is currently a placeholder and must be updated.")
         elif len > 101:
             #! WHAT IS THE BEST STRATEGY HERE? Different samples can be taken here
             sample["1/DNA_regions"] = self.genome[chr][pos-50:pos+51]
-            warnings.warn("The handling of sequences with length > 101 is currently a placeholder and must be updated.")
+            #warnings.warn("The handling of sequences with length > 101 is currently a placeholder and must be updated.")
 
         sample["central"] = self.central[index]
 
         return sample
 
 
+class HQ_dataset_training(h5torch.Dataset):
+    """
+    This dataset returns the "High Quality" dataset. For a given dataset (celltype) and TF,
+    it returns the positive samples for that TF as positives and non-overlapping ATAC peaks as negatives.
+    The training set is balanced to have an equal number of positives and negatives.
+    """
+    def __init__(
+        self,
+        file,
+        TF,
+        subset=None
+    ):
+        super().__init__(file, in_memory=True)
+        self.subset = subset
+        self.TF = TF
 
+        self.mapping = {"A": 0, "T": 1, "C": 2, "G": 3, "N": 4}
+        self.rev_mapping = {v : k for k, v in self.mapping.items()}
+
+        self.genome = {k : file["unstructured"][k] for k in list(file["unstructured"]) if k.startswith("chr")}
+
+        prot_names = file["0/prot_names"][:]
+        prot_mask_ATAC = prot_names == b"ATAC_peak"
+        prot_mask_TF = prot_names == TF.encode()
+        central = file["central"][:]
+        ATAC_c = central[prot_mask_ATAC]
+        TF_c = central[prot_mask_TF]
+
+        # put everything as 2 (not used)
+        new_vector = np.full(ATAC_c.shape, 2)
+
+        # set the positives from the TF as positives
+        new_vector[(TF_c == 1)] = 1  # Set to 1 where TF_c is 1
+
+        # if a position is open according to ATAC and it does not overlap with a positive of the TF take it as a negative
+        new_vector[(ATAC_c == 1) & (TF_c != 2)] = 0 # Set to 0 where ATAC_c is 1 and TF_c is not 2
+
+        # this one should not change anything!
+        new_vector[(ATAC_c == 1) & (TF_c == 2)] = 2  # Ensure 2 where ATAC_c is 1 and TF_c is 2
+
+        # now make a new central vector without the 2's and make the matching peak_ix_to_pos etc
+        mask_atac = new_vector != 2
+        mask_atac = mask_atac.squeeze()
+        mask_subset = np.isin(file["1/peak_ix_to_chr"][:].astype(str), subset) #only take the right (training, val) positions
+        mask = mask_atac & mask_subset
+
+        all_central = new_vector[0].squeeze()[mask]
+        all_pos = file["1/peak_ix_to_pos"][mask]
+        all_len = file["1/peak_ix_to_len"][mask]
+        all_chr = file["1/peak_ix_to_chr"][mask]
+
+        # Separate positives and negatives
+        pos_indices = np.where(all_central == 1)[0]
+        neg_indices = np.where(all_central == 0)[0]
+
+        # Balance: sample negatives to match number of positives
+        n_pos = len(pos_indices)
+        n_neg = len(neg_indices)
+        if n_neg > n_pos:
+            rng = np.random.default_rng(42)
+            sampled_neg_indices = rng.choice(neg_indices, size=n_pos, replace=False)
+        else:
+            sampled_neg_indices = neg_indices
+
+        # Combine and shuffle
+        final_indices = np.concatenate([pos_indices, sampled_neg_indices])
+        rng = np.random.default_rng(123)
+        rng.shuffle(final_indices)
+
+        self.central = all_central[final_indices]
+        self.peak_ix_to_pos = all_pos[final_indices]
+        self.peak_ix_to_len = all_len[final_indices]
+        self.peak_ix_to_chr = all_chr[final_indices]
+
+    def __len__(self):
+        return len(self.peak_ix_to_pos)
+    
+    def __getitem__(self, index):
+        sample = {}
+        sample["0/prot_names"] = self.TF
+
+        chr = self.peak_ix_to_chr[index].decode()
+        pos = self.peak_ix_to_pos[index]
+        length = self.peak_ix_to_len[index]
+        if length == 101:
+            sample["1/DNA_regions"] = self.genome[chr][pos-50:pos+51]
+        else:
+            # Always take 101bp for now
+            sample["1/DNA_regions"] = self.genome[chr][pos-50:pos+51]
+        sample["central"] = self.central[index]
+        return sample
 
 
 class DataModule(pl.LightningDataModule):
@@ -498,8 +594,8 @@ class DataModule_HQ(pl.LightningDataModule):
         all_orderings = [list(ordering) for ordering in all_orderings]
 
         # depending on the cross_val_set, take different subsets of the data for train, val, test
-        self.train_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][0])
-        self.val_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][1])
+        self.train_data = HQ_dataset_training(f, TF=TF, subset=all_orderings[cross_val_set][0])
+        self.val_data = HQ_dataset_training(f, TF=TF, subset=all_orderings[cross_val_set][1])
         self.test_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][2])
 
 

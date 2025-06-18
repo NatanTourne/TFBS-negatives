@@ -45,10 +45,10 @@ if __name__ == "__main__":
     )
 
     checkpoint_callback = ModelCheckpoint(
-            monitor='val_loss',
+            monitor='AUROC',
             dirpath=args.output_dir,
             filename=args.celltype + "_" + args.TF +"_CV-" + str(args.cross_val_set) + "_" + date + '_{epoch:02d}_{val_loss:.2f}_{AUROC:.2f}',
-            mode="min"
+            mode="max"
             )
 
     early_stop = EarlyStopping(args.early_stop_metric, patience=args.early_stop_patience, mode=args.early_stop_mode)
@@ -68,31 +68,39 @@ if __name__ == "__main__":
 
     trainer.fit(model, Dmod)
     if args.test:
-        best_model_path = checkpoint_callback.best_model_path
+        best_model_path = checkpoint_callback.best_model_path  # Re-fetch after training
         if best_model_path:
             print(f"Loading best model from: {best_model_path}")
-            
-            # ✅ Close any previous WandB run (if any)
-            wandb.finish()
-
-            # ✅ Start a new WandB run for testing
-            test_logger = WandbLogger(
-                project="Negatives",
-                entity="ntourne",
-                name=f"TEST_{run_name}",
-                group=args.group_name + "_TEST",
-                config=vars(args)
-            )
-
-            # ✅ Create a new trainer with the test logger
-            test_trainer = pl.Trainer(
-                accelerator="gpu",
-                devices=args.devices,
-                logger=test_logger,
-            )
-
-            # ✅ Load best model and run test
             best_model = TFmodel_HQ.load_from_checkpoint(best_model_path)
-            test_trainer.test(best_model, datamodule=Dmod)
+            trainer.test(best_model, datamodule=Dmod)
         else:
             warnings.warn("No best model found — skipping test.")
+    # if args.test:
+    #     best_model_path = checkpoint_callback.best_model_path
+    #     if best_model_path:
+    #         print(f"Loading best model from: {best_model_path}")
+            
+    #         # ✅ Close any previous WandB run (if any)
+    #         wandb.finish()
+
+    #         # ✅ Start a new WandB run for testing
+    #         test_logger = WandbLogger(
+    #             project="Negatives",
+    #             entity="ntourne",
+    #             name=f"TEST_{run_name}",
+    #             group=args.group_name + "_TEST",
+    #             config=vars(args)
+    #         )
+
+    #         # ✅ Create a new trainer with the test logger
+    #         test_trainer = pl.Trainer(
+    #             accelerator="gpu",
+    #             devices=args.devices,
+    #             logger=test_logger,
+    #         )
+
+    #         # ✅ Load best model and run test
+    #         best_model = TFmodel_HQ.load_from_checkpoint(best_model_path)
+    #         test_trainer.test(best_model, datamodule=Dmod)
+    #     else:
+    #         warnings.warn("No best model found — skipping test.")

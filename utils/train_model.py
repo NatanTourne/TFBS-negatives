@@ -46,16 +46,17 @@ if __name__ == "__main__":
     )
 
     checkpoint_callback = ModelCheckpoint(
-            monitor='val_loss',
+            monitor='AUROC',
             dirpath=args.output_dir,
             filename=args.celltype + "_" + args.TF + "_" + args.neg_mode +"_CV-" + str(args.cross_val_set) + "_" + date + '_{epoch:02d}_{val_loss:.2f}_{AUROC:.2f}',
-            mode="min"
+            mode="max"
             )
 
     early_stop = EarlyStopping(args.early_stop_metric, patience=args.early_stop_patience, mode=args.early_stop_mode)
 
     callback_list = [checkpoint_callback, early_stop]
-    wandb_logger = WandbLogger(project="Negatives", entity="ntourne", config=vars(args))
+    run_name = f"{args.celltype}_{args.TF}_CV{args.cross_val_set}_{date}"
+    wandb_logger = WandbLogger(project="Negatives", entity="ntourne", config=vars(args), name=run_name, group=args.group_name)
 
     trainer = pl.Trainer(
         max_steps=5_000_000,
