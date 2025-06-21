@@ -194,7 +194,7 @@ class PrintMod(nn.Module):
         print(x.shape)
         return x
 
-#! OLD model!!
+
 class multilabel(pl.LightningModule):
     def __init__(
         self,

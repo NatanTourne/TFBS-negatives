@@ -8,7 +8,7 @@ __pycache__/
 
 
 *.h5t
-
+/data/home/natant/Negatives/TFBS_negatives/testing_ground/lightning_logs/
 
 # Distribution / packaging
 .Python
