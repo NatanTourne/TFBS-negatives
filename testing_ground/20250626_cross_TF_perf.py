@@ -85,7 +85,7 @@ for cross_val_set in cross_val_sets:
 
 
 # #! for celltype negs
-ckpt_files = [f for f in os.listdir('/data/home/natant/Negatives/Runs/full_run_3_ct') if f.endswith('.ckpt')]
+ckpt_files = [f for f in os.listdir('/data/home/natant/Negatives/Runs/full_run_3') if f.endswith('.ckpt')]
 print(ckpt_files)
 neg_mode_to_check_list = ['celltype']
 for cross_val_set in cross_val_sets:
@@ -120,7 +120,7 @@ for cross_val_set in cross_val_sets:
                 file_name_temp = file_name_temp.replace(key, value)
             results_dict_AUROC[target_TF] = []
             results_dict_AUROC_HQ[target_TF] = []
-            file = '/data/home/natant/Negatives/Runs/full_run_3_ct/' + file_name
+            file = '/data/home/natant/Negatives/Runs/full_run_3/' + file_name
             
             
             for TF in TF_list:

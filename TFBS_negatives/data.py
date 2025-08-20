@@ -525,7 +525,8 @@ class DataModule(pl.LightningDataModule):
             TF,
             batch_size,
             neg_mode,
-            cross_val_set = 0
+            cross_val_set = 0,
+            max_positives = None,
     ):
         super().__init__()
         self.TF = TF
@@ -538,7 +539,14 @@ class DataModule(pl.LightningDataModule):
             "dinucl_sampled": dinucl_sampled_negs,
             "celltype": celltype_negatives,
         }
-
+        if max_positives is not None:
+            neg_modes = {
+                "neighbors": neighbor_negs_limited,
+                "shuffled": shuffled_negs_limited,
+                "dinucl_shuffled": dinucl_shuffled_negs_limited,
+                "dinucl_sampled": dinucl_sampled_negs_limited,
+                "celltype": celltype_negatives_limited,
+            }
         if neg_mode not in neg_modes:
             raise ValueError(f"Invalid neg_mode: {neg_mode}")
         
@@ -552,9 +560,15 @@ class DataModule(pl.LightningDataModule):
 
         neg_class = neg_modes[neg_mode]
         # depending on the cross_val_set, take different subsets of the data for train, val, test
-        self.train_data = neg_class(f, TF=TF, subset=all_orderings[cross_val_set][0])
-        self.val_data = neg_class(f, TF=TF, subset=all_orderings[cross_val_set][1])
-        self.HQ_val_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][1])
+        if max_positives is None:
+            self.train_data = neg_class(f, TF=TF, subset=all_orderings[cross_val_set][0])
+            self.val_data = neg_class(f, TF=TF, subset=all_orderings[cross_val_set][1])
+            self.HQ_val_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][1])
+
+        else:
+            self.train_data = neg_class(f, TF=TF, subset=all_orderings[cross_val_set][0], max_positives=max_positives)
+            self.val_data = neg_class(f, TF=TF, subset=all_orderings[cross_val_set][1], max_positives=max_positives)
+            self.HQ_val_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][1])
 
         self.test_data = neg_class(f, TF=TF, subset=all_orderings[cross_val_set][2])
         self.HQ_test_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][2])
@@ -578,7 +592,8 @@ class DataModule_HQ(pl.LightningDataModule):
             h5torch_file,
             TF,
             batch_size,
-            cross_val_set = 0
+            cross_val_set = 0,
+            max_positives = None
     ):
         super().__init__()
         self.TF = TF
@@ -594,8 +609,12 @@ class DataModule_HQ(pl.LightningDataModule):
         all_orderings = [list(ordering) for ordering in all_orderings]
 
         # depending on the cross_val_set, take different subsets of the data for train, val, test
-        self.train_data = HQ_dataset_training(f, TF=TF, subset=all_orderings[cross_val_set][0])
-        self.val_data = HQ_dataset_training(f, TF=TF, subset=all_orderings[cross_val_set][1])
+        if max_positives is None:
+            self.train_data = HQ_dataset_training(f, TF=TF, subset=all_orderings[cross_val_set][0])
+            self.val_data = HQ_dataset_training(f, TF=TF, subset=all_orderings[cross_val_set][1])
+        else:
+            self.train_data = HQ_dataset_training_limited(f, TF=TF, subset=all_orderings[cross_val_set][0], max_positives=max_positives)
+            self.val_data = HQ_dataset_training_limited(f, TF=TF, subset=all_orderings[cross_val_set][1], max_positives=max_positives)
         self.test_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][2])
 
 
@@ -615,3 +634,224 @@ class DataModule_sanity_check(DataModule):
     def val_dataloader(self):
         warnings.warn("Sanity check mode: Validation is being calculated on training data.")
         return torch.utils.data.DataLoader(self.train_data, shuffle=True, batch_size=self.batch_size, num_workers=2)
+    
+
+
+def create_limited_dataset(base_class):
+    """
+    Wrapper function that creates a limited version of any dataset class.
+    """
+    class LimitedDataset(base_class):
+        def __init__(self, *args, max_positives=None, **kwargs):
+            # Initialize the base class first
+            super().__init__(*args, **kwargs)
+            
+            # Apply limitations if max_positives is specified
+            if max_positives is not None:
+                self._apply_limitations(max_positives)
+        
+        def _apply_limitations(self, max_positives):
+            """Apply limitations to the dataset based on max_positives."""
+            # Handle datasets with explicit positive/negative structure
+            if hasattr(self, 'peak_ix_to_pos') and hasattr(self, 'neg_len'):
+                # For datasets like dinucl_shuffled_negs, dinucl_sampled_negs, celltype_negatives
+                self._limit_pos_neg_structure(max_positives)
+
+            elif hasattr(self, 'peak_ix_to_pos'):
+                # For datasets like shuffled_negs, neighbor_negs (balanced by design)
+                self._limit_balanced_structure(max_positives)
+        
+        def _limit_pos_neg_structure(self, max_positives):
+            """Limit datasets with separate positive and negative structures."""
+            # Limit positives
+            
+            if len(self.peak_ix_to_pos) > max_positives:
+                rng = np.random.default_rng(42)
+                limited_indices = rng.choice(len(self.peak_ix_to_pos), size=max_positives, replace=False)
+                og_len = len(self.peak_ix_to_pos)
+                self.peak_ix_to_pos = self.peak_ix_to_pos[limited_indices]
+                self.peak_ix_to_len = self.peak_ix_to_len[limited_indices]
+                self.peak_ix_to_chr = self.peak_ix_to_chr[limited_indices]
+            
+                # Limit negatives to match positives
+                if hasattr(self, 'neg_seqs'):
+                    # For dinucl_shuffled_negs
+                    if len(self.neg_seqs) != og_len:
+                        raise ValueError("Length of neg_seqs does not match length of peak_ix_to_pos.")
+                    self.neg_seqs = self.neg_seqs[limited_indices] #! so we keep the matches negs and pos
+                    self.neg_len = len(self.neg_seqs)
+
+                elif hasattr(self, 'neg_pos'):
+                    # For dinucl_sampled_negs
+                    if len(self.neg_pos) != og_len:
+                        print("Warning: Length of neg_pos does not match length of peak_ix_to_pos. Limiting to match positives.")
+                        print("Optimally they should be the same length...........")
+                        print(f"Original Pos length: {og_len}, Original Neg length: {len(self.neg_pos)}")
+                        #raise ValueError("Length of neg_pos does not match length of peak_ix_to_pos.")
+                    # Sample negatives to match the number of limited positives
+                    if len(self.neg_pos) > max_positives:
+                        neg_rng = np.random.default_rng(43)  # Different seed for negatives
+                        neg_limited_indices = neg_rng.choice(len(self.neg_pos), size=max_positives, replace=False)
+                        self.neg_pos = self.neg_pos[neg_limited_indices]
+                        self.neg_chrs = self.neg_chrs[neg_limited_indices]
+                    else:
+                        raise ValueError("Negatives are fewer than positives, cannot limit to max_positives.")
+                    self.neg_len = len(self.neg_pos)
+
+                elif hasattr(self, 'neg_indices'):
+                    # For celltype_negatives
+                    if len(self.neg_indices) != og_len:
+                        print("Warning: Length of neg_pos does not match length of peak_ix_to_pos. Limiting to match positives.")
+                        print("Optimally they should be the same length...........")
+                        print(f"Original Pos length: {og_len}, Original Neg length: {len(self.neg_indices)}")
+                        #raise ValueError("Length of neg_indices does not match length of peak_ix_to_pos.")
+                    # Sample negatives to match the number of limited positives
+                    if len(self.neg_indices) > max_positives:
+                        neg_rng = np.random.default_rng(43)  # Different seed for negatives
+                        neg_limited_indices = neg_rng.choice(len(self.neg_indices), size=max_positives, replace=False)
+                        self.neg_indices = self.neg_indices[neg_limited_indices]
+                        self.neg_peak_ix_to_pos = self.neg_peak_ix_to_pos[neg_limited_indices]
+                        self.neg_peak_ix_to_len = self.neg_peak_ix_to_len[neg_limited_indices]
+                        self.neg_peak_ix_to_chr = self.neg_peak_ix_to_chr[neg_limited_indices]
+                    else:
+                        raise ValueError("Negatives are fewer than positives, cannot limit to max_positives.")
+                    self.neg_len = len(self.neg_indices)
+            else:
+                raise ValueError("Number of positives is less than or equal to max_positives, no need to limit.")
+        def _limit_central_structure(self, max_positives):
+            """Limit datasets with central labels (like HQ_dataset)."""
+            pos_indices = np.where(self.central == 1)[0]
+            neg_indices = np.where(self.central == 0)[0]
+            
+            # Limit positives
+            if len(pos_indices) > max_positives:
+                rng = np.random.default_rng(42)
+                pos_indices = rng.choice(pos_indices, size=max_positives, replace=False)
+            
+            # Limit negatives to match positives
+            if len(neg_indices) > len(pos_indices):
+                rng = np.random.default_rng(42)
+                neg_indices = rng.choice(neg_indices, size=len(pos_indices), replace=False)
+            
+            # Combine and apply
+            final_indices = np.concatenate([pos_indices, neg_indices])
+            rng = np.random.default_rng(123)
+            rng.shuffle(final_indices)
+            
+            self.central = self.central[final_indices]
+            self.peak_ix_to_pos = self.peak_ix_to_pos[final_indices]
+            self.peak_ix_to_len = self.peak_ix_to_len[final_indices]
+            self.peak_ix_to_chr = self.peak_ix_to_chr[final_indices]
+        
+        def _limit_balanced_structure(self, max_positives):
+            """Limit datasets that are balanced by design (like shuffled_negs, neighbor_negs)."""
+            if len(self.peak_ix_to_pos) > max_positives:
+                rng = np.random.default_rng(42)
+                limited_indices = rng.choice(len(self.peak_ix_to_pos), size=max_positives, replace=False)
+                self.peak_ix_to_pos = self.peak_ix_to_pos[limited_indices]
+                self.peak_ix_to_len = self.peak_ix_to_len[limited_indices]
+                self.peak_ix_to_chr = self.peak_ix_to_chr[limited_indices]
+    
+    return LimitedDataset
+
+class HQ_dataset_training_limited(h5torch.Dataset):
+    """
+    This dataset returns the "High Quality" dataset. For a given dataset (celltype) and TF,
+    it returns the positive samples for that TF as positives and non-overlapping ATAC peaks as negatives.
+    The training set is balanced to have an equal number of positives and negatives.
+    """
+    def __init__(
+        self,
+        file,
+        TF,
+        max_positives,
+        subset=None
+    ):
+        super().__init__(file, in_memory=True)
+        self.subset = subset
+        self.TF = TF
+
+        self.mapping = {"A": 0, "T": 1, "C": 2, "G": 3, "N": 4}
+        self.rev_mapping = {v : k for k, v in self.mapping.items()}
+
+        self.genome = {k : file["unstructured"][k] for k in list(file["unstructured"]) if k.startswith("chr")}
+
+        prot_names = file["0/prot_names"][:]
+        prot_mask_ATAC = prot_names == b"ATAC_peak"
+        prot_mask_TF = prot_names == TF.encode()
+        central = file["central"][:]
+        ATAC_c = central[prot_mask_ATAC]
+        TF_c = central[prot_mask_TF]
+
+        # put everything as 2 (not used)
+        new_vector = np.full(ATAC_c.shape, 2)
+
+        # set the positives from the TF as positives
+        new_vector[(TF_c == 1)] = 1  # Set to 1 where TF_c is 1
+
+        # if a position is open according to ATAC and it does not overlap with a positive of the TF take it as a negative
+        new_vector[(ATAC_c == 1) & (TF_c != 2)] = 0 # Set to 0 where ATAC_c is 1 and TF_c is not 2
+
+        # this one should not change anything!
+        new_vector[(ATAC_c == 1) & (TF_c == 2)] = 2  # Ensure 2 where ATAC_c is 1 and TF_c is 2
+
+        # now make a new central vector without the 2's and make the matching peak_ix_to_pos etc
+        mask_atac = new_vector != 2
+        mask_atac = mask_atac.squeeze()
+        mask_subset = np.isin(file["1/peak_ix_to_chr"][:].astype(str), subset) #only take the right (training, val) positions
+        mask = mask_atac & mask_subset
+
+        all_central = new_vector[0].squeeze()[mask]
+        all_pos = file["1/peak_ix_to_pos"][mask]
+        all_len = file["1/peak_ix_to_len"][mask]
+        all_chr = file["1/peak_ix_to_chr"][mask]
+
+        # Separate positives and negatives
+        pos_indices = np.where(all_central == 1)[0]
+        neg_indices = np.where(all_central == 0)[0]
+
+        # Balance: sample negatives to match number of positives
+        n_pos = max_positives
+        n_neg = max_positives
+        rng = np.random.default_rng(42)
+        sampled_neg_indices = rng.choice(neg_indices, size=n_neg, replace=False)
+        sampled_pos_indices = rng.choice(pos_indices, size=n_pos, replace=False)
+
+
+        # Combine and shuffle
+        final_indices = np.concatenate([sampled_pos_indices, sampled_neg_indices])
+        rng = np.random.default_rng(123)
+        rng.shuffle(final_indices)
+
+        self.central = all_central[final_indices]
+        self.peak_ix_to_pos = all_pos[final_indices]
+        self.peak_ix_to_len = all_len[final_indices]
+        self.peak_ix_to_chr = all_chr[final_indices]
+
+    def __len__(self):
+        return len(self.peak_ix_to_pos)
+    
+    def __getitem__(self, index):
+        sample = {}
+        sample["0/prot_names"] = self.TF
+
+        chr = self.peak_ix_to_chr[index].decode()
+        pos = self.peak_ix_to_pos[index]
+        length = self.peak_ix_to_len[index]
+        if length == 101:
+            sample["1/DNA_regions"] = self.genome[chr][pos-50:pos+51]
+        else:
+            # Always take 101bp for now
+            sample["1/DNA_regions"] = self.genome[chr][pos-50:pos+51]
+        sample["central"] = self.central[index]
+        return sample
+
+# Create limited versions of all dataset classes
+dinucl_shuffled_negs_limited = create_limited_dataset(dinucl_shuffled_negs)
+dinucl_sampled_negs_limited = create_limited_dataset(dinucl_sampled_negs)
+shuffled_negs_limited = create_limited_dataset(shuffled_negs)
+neighbor_negs_limited = create_limited_dataset(neighbor_negs)
+celltype_negatives_limited = create_limited_dataset(celltype_negatives)
+# HQ_dataset_limited = create_limited_dataset(HQ_dataset)
+# HQ_dataset_training_limited = create_limited_dataset(HQ_dataset_training)
+
