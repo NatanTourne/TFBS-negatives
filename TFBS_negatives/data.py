@@ -687,6 +687,7 @@ def create_limited_dataset(base_class):
                         print("Warning: Length of neg_pos does not match length of peak_ix_to_pos. Limiting to match positives.")
                         print("Optimally they should be the same length...........")
                         print(f"Original Pos length: {og_len}, Original Neg length: {len(self.neg_pos)}")
+                        print("Intended positive length: ", max_positives)
                         #raise ValueError("Length of neg_pos does not match length of peak_ix_to_pos.")
                     # Sample negatives to match the number of limited positives
                     if len(self.neg_pos) > max_positives:
@@ -695,7 +696,12 @@ def create_limited_dataset(base_class):
                         self.neg_pos = self.neg_pos[neg_limited_indices]
                         self.neg_chrs = self.neg_chrs[neg_limited_indices]
                     else:
-                        raise ValueError("Negatives are fewer than positives, cannot limit to max_positives.")
+                        print("Warning: Negatives are fewer than positives, cannot limit to max_positives.")
+                        print("Intended positive length: ", max_positives)
+                        print("length of neg_pos: ", len(self.neg_pos))
+                        #! temporary just not raising an error and letting it go through 
+                        #raise ValueError("Negatives are fewer than positives, cannot limit to max_positives.")
+                    
                     self.neg_len = len(self.neg_pos)
 
                 elif hasattr(self, 'neg_indices'):
