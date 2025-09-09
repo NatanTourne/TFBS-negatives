@@ -75,32 +75,3 @@ if __name__ == "__main__":
             trainer.test(best_model, datamodule=Dmod)
         else:
             warnings.warn("No best model found — skipping test.")
-    # if args.test:
-    #     best_model_path = checkpoint_callback.best_model_path
-    #     if best_model_path:
-    #         print(f"Loading best model from: {best_model_path}")
-            
-    #         # ✅ Close any previous WandB run (if any)
-    #         wandb.finish()
-
-    #         # ✅ Start a new WandB run for testing
-    #         test_logger = WandbLogger(
-    #             project="Negatives",
-    #             entity="ntourne",
-    #             name=f"TEST_{run_name}",
-    #             group=args.group_name + "_TEST",
-    #             config=vars(args)
-    #         )
-
-    #         # ✅ Create a new trainer with the test logger
-    #         test_trainer = pl.Trainer(
-    #             accelerator="gpu",
-    #             devices=args.devices,
-    #             logger=test_logger,
-    #         )
-
-    #         # ✅ Load best model and run test
-    #         best_model = TFmodel_HQ.load_from_checkpoint(best_model_path)
-    #         test_trainer.test(best_model, datamodule=Dmod)
-    #     else:
-    #         warnings.warn("No best model found — skipping test.")

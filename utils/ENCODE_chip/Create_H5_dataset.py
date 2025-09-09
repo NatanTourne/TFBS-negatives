@@ -337,9 +337,7 @@ import sys,string,random
 import subprocess
 
 ############################################################################################################### TODO: ANY PROBLEMS GOING FROM PYTHON 2 TO PYTHON 3
-### ALSO TODO: I ADDED THE "N" TO THE CODE? NO EXTRA PROBLEMS??? DOUBLE CHECK!!!
-
-##### CODE FROM https://github.com/wassermanlab/BiasAway/blob/master/altschulEriksonDinuclShuffle.py 
+##### CODE MODIFIED FROM https://github.com/wassermanlab/BiasAway/blob/master/altschulEriksonDinuclShuffle.py 
 
 def computeCountAndLists(s):
   #WARNING: Use of function count(s,'UU') returns 1 on word UUU

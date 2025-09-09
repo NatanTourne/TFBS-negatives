@@ -201,7 +201,7 @@ for celltype in cell_types:
             # Calculate accuracy score with threshold at 0.8 * max_score
             try:
                 max_score = np.max(scores)
-                threshold = 0.8 * max_score #! important setting for accuracy
+                threshold = 0.8 * max_score 
                 predictions = (scores > threshold).astype(int)
                 acc = accuracy_score(labels, predictions)
                 accuracy_scores.setdefault(TF, []).append(acc)

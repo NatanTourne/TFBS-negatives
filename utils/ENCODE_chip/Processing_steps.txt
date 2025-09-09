@@ -9,13 +9,17 @@
    -> script: /data/home/natant/Negatives/TFBS-negatives/utils/ENCODE_chip/Preparing_dataset.py
    -> output: /data/home/natant/Negatives/Data/Encode690/ENCODE_hg38_subset_101bp
 
-NOPE NOT MERGING THE PEAKS!
-XXXX 4. Make cell type specific datasets where info for the TFs is merged. If the peaks overlap, extend the peaks and mention all the TFs seperated by commas.
-XXXX ?    -> script: /data/home/natant/Negatives/TFBS-negatives/utils/ENCODE_chip/Making_Cell_Type_ChIP_datasets.sh
-XXXX ?    -> output: /data/home/natant/Negatives/Data/Encode690/ENCODE_hg38_subset_celltype_merged
-
 4. Make cell type specific datasets where info for the TFs is merged.
-    -> script: /data/home/natant/Negatives/TFBS-negatives/utils/ENCODE_chip/Making_Cell_Type_ChIP_datasets_no_merging.sh
-    -> output: /data/home/natant/Negatives/Data/Encode690/ENCODE_hg38_subset_101bp_celltypes
+    -> script: /data/home/natant/Negatives/TFBS-negatives/utils/ENCODE_chip/Making_Cell_Type_ChIP_datasets_no_merging_BIG.sh
+    -> output: /data/home/natant/Negatives/Data/Encode690_big/ENCODE_hg38_subset_101bp_celltypes
 
 5. Add the open ATAC-seq regions (and resort the file!):
+    -> script: /data/home/natant/Negatives/TFBS_negatives/utils/ENCODE_chip/Adding_ATAC_peaks_BIG.sh
+    -> output: /data/home/natant/Negatives/Data/Encode690_big/ENCODE_hg38_subset_101bp_celltypes_ATAC
+
+6. Creating the H5 torch file and dinculeotide shuffled negatives and genomic sampled negatives:
+    -> script: python /data/home/natant/Negatives/TFBS_negatives/utils/ENCODE_chip/Create_H5_dataset.py  --Gen_h5t --bed_location /data/home/natant/Negatives/Data/Encode690_big/ENCODE_hg38_subset_101bp_celltypes_ATAC --h5t_location /data/home/natant/Negatives/Data/Encode690_big/ENCODE_hg38_subset_101bp_celltypes_ATAC_H5 --Gen_dinucl_shuffled --sampl_dinucl_matched
+    -> output: /data/home/natant/Negatives/Data/Encode690_big/ENCODE_hg38_subset_101bp_celltypes_ATAC --h5t_location /data/home/natant/Negatives/Data/Encode690_big/ENCODE_hg38_subset_101bp_celltypes_ATAC_H5
+
+7. Adding celltype negatives:
+    -> script: /data/home/natant/Negatives/TFBS_negatives/utils/ENCODE_chip/cell_line_sampling.py

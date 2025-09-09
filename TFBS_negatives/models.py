@@ -10,7 +10,7 @@ import numpy as np
 from torchmetrics.classification import MultilabelAUROC, MultilabelAveragePrecision
 from torchmetrics.functional.classification import multilabel_average_precision, binary_auroc, binary_average_precision, binary_accuracy
 
-#! OLD FUNCTIONS:
+# Helper functions and classes
 class MultiLabelLoss(nn.Module):
     def __init__(self,):
         super().__init__()
@@ -127,7 +127,7 @@ class SmallMLP(nn.Module):
     def forward(self, x):
         return self.net(x)
     
-
+# main model achitecture
 class EnformerConvStack(nn.Module):
     def __init__(
         self,
@@ -186,131 +186,7 @@ class EnformerConvStack(nn.Module):
     def forward(self, x):
         return self.encoder(x)
 
-class PrintMod(nn.Module):
-    def __init__(self):
-        super(PrintMod, self).__init__()
-
-    def forward(self, x):
-        print(x.shape)
-        return x
-
-
-class multilabel(pl.LightningModule):
-    def __init__(
-        self,
-
-        # Model architecture
-        target_hsize_DNA=64,
-        n_blocks_DNA=2,
-        DNA_kernel_size=9,
-        progressive_channel_widening_DNA=True,
-        pooling_between_blocks_DNA=True,
-        DNA_dropout=0.25,
-        latent_vector_size=64,
-
-        # training
-        learning_rate_DNA_branch=1e-5,
-        loss_function = "MultiLabel",
-        HQ_val_interval = 1,
-    ):
-        super(multilabel, self).__init__()
-
-        self.learning_rate_DNA_branch = learning_rate_DNA_branch
-        self.HQ_val_interval = HQ_val_interval
-        self.val_step_output = []
-        self.latent_vector_size = latent_vector_size
-
-        # Setup Loss Functions (not all loss functions are possible for the validation loop)
-        loss_function_options = ["MultiClass", "MultiLabel"]
-        if loss_function not in loss_function_options:
-            raise ValueError("Invalid loss function. Expected one of: %s" % loss_function_options)
-        
-        if loss_function == "MultiClass":
-            self.loss_function = MultiClassLoss()
-        elif loss_function == "MultiLabel":
-            self.loss_function = MultiLabelLoss()
-
-        # nucleotide encodings
-        nucleotide_weights = torch.FloatTensor(
-            [[1, 0, 0, 0],
-             [0, 1, 0, 0],
-             [0, 0, 1, 0],
-             [0, 0, 0, 1],
-             [0, 0, 0, 0]]
-            )
-        self.embedding = nn.Embedding.from_pretrained(nucleotide_weights)
-        
-        # DNA branch
-    
-        self.DNA_branch = EnformerConvStack(
-            input_hsize = 4,
-            target_hsize =target_hsize_DNA, # 512 reasonable default? is Enformer size divided by 3 TODO
-            n_blocks = n_blocks_DNA,  # reasonable default? equals to Enformer setup TODO
-            kernel_size = DNA_kernel_size, # reasonable default? TODO
-            latent_size = latent_vector_size,
-            dropout=DNA_dropout,
-            progressive_channel_widening=progressive_channel_widening_DNA,
-            pooling_between_blocks=pooling_between_blocks_DNA, # reasonable default? TODO
-        )
-        
-        self.save_hyperparameters()
-
-
-
-    def forward(self, x_DNA_in):
-        x_DNA = self.DNA_branch(self.embedding(torch.tensor(x_DNA_in, dtype=torch.int)).permute(0, 2, 1))
-        return x_DNA
-        
-    
-    def configure_optimizers(self):
-        optimizer = optim.Adam([
-            {"params":self.DNA_branch.parameters(), "lr":self.learning_rate_DNA_branch}
-            ])
-        return optimizer
-    
-
-    def training_step(self, train_batch, batch_idx):
-        x_DNA = train_batch["1/DNA_regions"]
-        y = train_batch["central"]
-
-        y_hat = self(x_DNA)
-        loss = self.loss_function(y_hat.squeeze(), y.float().squeeze())
-
-
-        self.log('train_loss', loss, prog_bar=True)
-        return loss
-    
-
-    def validation_step(self, train_batch, batch_idx, dataloader_idx=0):
-        x_DNA = train_batch["1/DNA_regions"]
-        y = train_batch["central"]
-        y_hat = self(x_DNA)
-        
-        if dataloader_idx == 0:
-            loss = self.loss_function(y_hat.squeeze(), y.float().squeeze())
-            self.log('val_loss', loss, prog_bar=True, add_dataloader_idx=False)
-            AUROC = binary_auroc(y_hat.T.squeeze(), y.T.squeeze())
-            self.log("AUROC", AUROC, add_dataloader_idx=False)
-            Accuracy = binary_accuracy(y_hat.T.squeeze(), y.T.squeeze())
-            self.log("Accuracy", Accuracy, add_dataloader_idx=False)
-            return loss
-
-        elif dataloader_idx == 1:
-            self.log('val_loss_HQ', loss, prog_bar=True, add_dataloader_idx=False)
-            AUROC = binary_auroc(y_hat.T.squeeze(), y.T.squeeze())
-            self.log("AUROC_HQ", AUROC, add_dataloader_idx=False)
-            Accuracy = binary_accuracy(y_hat.T.squeeze(), y.T.squeeze())
-            self.log("Accuracy_HQ", Accuracy, add_dataloader_idx=False)
-            
-
-    def on_validation_epoch_end(self):
-        pass
-
-
-    def get_TF_latent_vector(self, TF_emb):
-        return self.prot_branch(TF_emb.permute(0, 2, 1))
-    
-
+# TF specific model 
 class TFmodel(pl.LightningModule):
     def __init__(
         self,
@@ -470,8 +346,7 @@ class TFmodel(pl.LightningModule):
         self.log("test_AUROC_HQ", AUROC_HQ, prog_bar=True)
         self.log("test_Accuracy_HQ", Accuracy_HQ, prog_bar=True)
 
-            
-
+# TF specific model for HQ only evaluation            
 class TFmodel_HQ(TFmodel):
     def on_test_epoch_end(self):
         # We only need to modify this on epoch end, the test_step "elif dataloader_idx == 1:" will just never be used!

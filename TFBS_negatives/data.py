@@ -6,7 +6,7 @@ import warnings
 from pytorch_lightning.callbacks import Callback
 from itertools import permutations
 
-
+# H5 torch datasets for different negative sampling strategies
 class dinucl_shuffled_negs(h5torch.Dataset):
     def __init__(
         self,
@@ -70,7 +70,6 @@ class dinucl_shuffled_negs(h5torch.Dataset):
         
         return sample
     
-
 class dinucl_sampled_negs(h5torch.Dataset):
     def __init__(
         self,
@@ -78,7 +77,6 @@ class dinucl_sampled_negs(h5torch.Dataset):
         TF,
         subset=None
     ):
-        #! still have to test this!
         super().__init__(file, in_memory=True)
         self.subset = subset
         self.TF = TF
@@ -214,7 +212,6 @@ class neighbor_negs(h5torch.Dataset):
         subset=None,
         deterministic_sampling=True
     ):
-        #! still have to test this!
         super().__init__(file, in_memory=True)
         self.deterministic_sampling = deterministic_sampling
         self.subset = subset
@@ -268,7 +265,7 @@ class neighbor_negs(h5torch.Dataset):
             converted_index = index-len(self.peak_ix_to_pos) #convert the index!
             chr = self.peak_ix_to_chr[converted_index].decode()
             pos = self.peak_ix_to_pos[converted_index]
-            offset = rng.choice([-1, 1]) * rng.randint(101, 200) #! Should I double check to make sure that this is not also a positive region?
+            offset = rng.choice([-1, 1]) * rng.randint(101, 200) 
             temp_DNA = self.genome[chr][pos + offset - 50:pos + offset + 51]
             sample["1/DNA_regions"] = temp_DNA
             sample["central"] = 0 
@@ -345,7 +342,6 @@ class celltype_negatives(h5torch.Dataset):
         
         return sample
     
-
 class HQ_dataset(h5torch.Dataset):
     """
     This dataset returns the "High Quality" dataset. This means that for a given dataset (celltype) and TF,
@@ -407,23 +403,20 @@ class HQ_dataset(h5torch.Dataset):
         
         chr = self.peak_ix_to_chr[index].decode()
         pos = self.peak_ix_to_pos[index]
-        #! BUT NOW WE HAVE TO DEAL WITH THE FACT THAT SOME POSITIONS ARE NOT 101BP
+
         len = self.peak_ix_to_len[index]
         if len == 101:
             sample["1/DNA_regions"] = self.genome[chr][pos-50:pos+51]
         elif len < 101:
-            #! PLACEHOLDER JUST TAKING 101 bp FOR NOW
             sample["1/DNA_regions"] = self.genome[chr][pos-50:pos+51]
-            #warnings.warn("The handling of sequences with length < 101 is currently a placeholder and must be updated.")
+            #! placeholder for now, always take 101bp
         elif len > 101:
-            #! WHAT IS THE BEST STRATEGY HERE? Different samples can be taken here
             sample["1/DNA_regions"] = self.genome[chr][pos-50:pos+51]
-            #warnings.warn("The handling of sequences with length > 101 is currently a placeholder and must be updated.")
+            #! placeholder for now, always take 101bp
 
         sample["central"] = self.central[index]
 
         return sample
-
 
 class HQ_dataset_training(h5torch.Dataset):
     """
@@ -518,6 +511,7 @@ class HQ_dataset_training(h5torch.Dataset):
         return sample
 
 
+# DataModules to handle data loading and batching
 class DataModule(pl.LightningDataModule):
     def __init__(
             self,
@@ -634,9 +628,9 @@ class DataModule_sanity_check(DataModule):
     def val_dataloader(self):
         warnings.warn("Sanity check mode: Validation is being calculated on training data.")
         return torch.utils.data.DataLoader(self.train_data, shuffle=True, batch_size=self.batch_size, num_workers=2)
-    
 
 
+# Helper function to create datasets with limited positives and negatives
 def create_limited_dataset(base_class):
     """
     Wrapper function that creates a limited version of any dataset class.
@@ -699,8 +693,7 @@ def create_limited_dataset(base_class):
                         print("Warning: Negatives are fewer than positives, cannot limit to max_positives.")
                         print("Intended positive length: ", max_positives)
                         print("length of neg_pos: ", len(self.neg_pos))
-                        #! temporary just not raising an error and letting it go through 
-                        #raise ValueError("Negatives are fewer than positives, cannot limit to max_positives.")
+                       
                     
                     self.neg_len = len(self.neg_pos)
 
@@ -858,6 +851,5 @@ dinucl_sampled_negs_limited = create_limited_dataset(dinucl_sampled_negs)
 shuffled_negs_limited = create_limited_dataset(shuffled_negs)
 neighbor_negs_limited = create_limited_dataset(neighbor_negs)
 celltype_negatives_limited = create_limited_dataset(celltype_negatives)
-# HQ_dataset_limited = create_limited_dataset(HQ_dataset)
-# HQ_dataset_training_limited = create_limited_dataset(HQ_dataset_training)
+
 
