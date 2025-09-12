@@ -170,3 +170,5 @@ Results/
 testing_ground/
 Results/*
 testing_ground/*
+.Results
+.testing_ground
