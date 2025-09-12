@@ -10,11 +10,11 @@
    -> output: /data/home/natant/Negatives/Data/Encode690/ENCODE_hg38_subset_101bp
 
 4. Make cell type specific datasets where info for the TFs is merged.
-    -> script: /data/home/natant/Negatives/TFBS-negatives/utils/ENCODE_chip/Making_Cell_Type_ChIP_datasets_no_merging_BIG.sh
+    -> script: /data/home/natant/Negatives/TFBS-negatives/utils/ENCODE_chip/Making_Cell_Type_ChIP_datasets_no_merging.sh
     -> output: /data/home/natant/Negatives/Data/Encode690_big/ENCODE_hg38_subset_101bp_celltypes
 
 5. Add the open ATAC-seq regions (and resort the file!):
-    -> script: /data/home/natant/Negatives/TFBS_negatives/utils/ENCODE_chip/Adding_ATAC_peaks_BIG.sh
+    -> script: /data/home/natant/Negatives/TFBS_negatives/utils/ENCODE_chip/Adding_ATAC_peaks.sh
     -> output: /data/home/natant/Negatives/Data/Encode690_big/ENCODE_hg38_subset_101bp_celltypes_ATAC
 
 6. Creating the H5 torch file and dinculeotide shuffled negatives and genomic sampled negatives:
