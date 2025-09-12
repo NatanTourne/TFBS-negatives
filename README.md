@@ -50,8 +50,6 @@ Summary Table:
 | 5 | Append ATAC peaks (tagged ATAC_peak) per cell type |
 | 6 | Create H5/h5t + (optional) precompute negative pools (dinucl shuffled / dinucl sampled) |
 | 7 | Add cell-type contextual negative indices (for neg_mode=celltype) |
-| 8 | (Optional) Export pos/neg FASTAs or motif annotations |
-| 9 | Integrity / key audit |
 
 
 STEP 1. Acquire ChIP-seq datasets (hg19 uniform peaks)
@@ -143,10 +141,6 @@ python utils/train_model.py \
   --group_name baseline \
   --test
 ```
-Outputs:
-- Checkpoints: args.output_dir (default path overridable)
-- Filename pattern includes epoch, val_loss, AUROC
-- Logged metrics to W&B project = Negatives_final (can edit in script)
 
 ## 7. Training on High-Quality Dataset
 ```
@@ -162,29 +156,5 @@ python utils/train_model_HQ.py \
   --group_name hq_baseline \
   --test
 ```
-Produces AUROC / Accuracy; no separate HQ_* metrics because dataset itself is HQ.
 
-## 8. Limiting Number of Positives (Scaling Experiments)
-Use the *_limited.py scripts and provide --pos_limit (balanced automatically):
-```
-python utils/train_model_limited.py \
-  --TF CTCF --celltype GM12878 --neg_mode dinucl_shuffled \
-  --devices 0 --pos_limit 1000 --batch_size 256 --learning_rate 1e-4 \
-  --n_blocks 4 --target_hsize 256 --cross_val_set 0 --group_name limit1k --test
-```
-For HQ variant:
-```
-python utils/train_model_HQ_limited.py \
-  --TF CTCF --celltype GM12878 --devices 0 --pos_limit 1000 \
-  --batch_size 256 --learning_rate 1e-4 --n_blocks 4 --target_hsize 256 --cross_val_set 0 --group_name hq_limit1k --test
-```
 
-## 9. Citation
-If you use this code or negative sampling analysis, please cite (placeholder):
-Tourné et al., To Bind or Not to Bind: How Negative Sampling Shapes TF Binding Site Prediction Performance, 2025.
-
-## 10. License
-MIT License (see LICENCE file).
-
----
-Questions / issues: open a GitHub issue.
