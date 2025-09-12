@@ -16,14 +16,6 @@ git clone <your_fork_or_repo_url> TFBS_negatives
 cd TFBS_negatives
 pip install -e .
 ```
-Additional packages (not pinned in setup.py) you likely need:
-```
-pip install wandb h5torch einops transformers torchmetrics
-```
-(Optional) login to Weights & Biases for logging:
-```
-wandb login
-```
 
 ## 2. Repository Layout (essentials)
 - TFBS_negatives/models.py : EnformerConvStack + TFmodel / TFmodel_HQ (LightningModules)
