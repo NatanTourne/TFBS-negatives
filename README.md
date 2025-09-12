@@ -41,17 +41,18 @@ General directory placeholders (adapt to your paths):
 RAW_HG19_DIR, LIFTOVER_HG38_DIR, FIXED101_DIR, CELLTYPE_DIR, CELLTYPE_ATAC_DIR, H5_DIR
 
 Summary Table:
-1 Acquire raw ENCODE hg19 TF ChIP narrowPeaks
-2 LiftOver & rename & metadata build (hg19→hg38)
-3 Filter & restrict to cell types with ATAC + trim to 101 bp around summit (or BIG variant)
-4 Build per-cell-type TF collections (optionally merge overlaps) OR keep separate
-5 Append ATAC peaks (tagged ATAC_peak) per cell type
-6 Create H5/h5t + (optional) precompute negative pools (dinucl shuffled / dinucl sampled)
-7 Add cell-type contextual negative indices (for neg_mode=celltype)
-8 (Optional) Export pos/neg FASTAs or motif annotations
-9 Integrity / key audit
+| Step | Description |
+|------|-------------|
+| 1 | Acquire raw ENCODE hg19 TF ChIP narrowPeaks |
+| 2 | LiftOver & rename & metadata build (hg19→hg38) |
+| 3 | Filter & restrict to cell types with ATAC + trim to 101 bp around summit (or BIG variant) |
+| 4 | Build per-cell-type TF collections (optionally merge overlaps) OR keep separate |
+| 5 | Append ATAC peaks (tagged ATAC_peak) per cell type |
+| 6 | Create H5/h5t + (optional) precompute negative pools (dinucl shuffled / dinucl sampled) |
+| 7 | Add cell-type contextual negative indices (for neg_mode=celltype) |
+| 8 | (Optional) Export pos/neg FASTAs or motif annotations |
+| 9 | Integrity / key audit |
 
-Below each step lists: Goal | Key Script(s) | Core Inputs | Core Outputs | Important Notes / Pitfalls.
 
 STEP 1. Acquire ChIP-seq datasets (hg19 uniform peaks)
 - link: https://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeAwgTfbsUniform/
@@ -85,9 +86,7 @@ STEP 5. Append ATAC peaks per cell type to enable High-Quality (HQ) negatives
 - Scripts: Adding_ATAC_peaks.sh
 - Inputs: CELLTYPE_DIR/*.narrowPeak (or BED), ATAC_DIR/* (ATAC narrowPeak). Matching based on normalized cell prefix (lowercase, hyphen removed).
 - Outputs: CELLTYPE_ATAC_DIR/*_merged.bed where TF peaks + ATAC peaks sorted; ATAC rows have 4th column = ATAC_peak.
-- Notes:
-  * Script creates temp filtered ATAC file replacing col4 with ATAC_peak then concatenates + sorts.
-  * If no ATAC file match: logs and skips (cell type excluded from HQ pathway unless you supply ATAC later).
+
 
 STEP 6. Create H5 / h5torch dataset & (optionally) generate sequence-based negative pools
 - Goal: Central consolidated file containing sequences, labels, annotations, and negative candidate pools.
@@ -98,9 +97,9 @@ STEP 6. Create H5 / h5torch dataset & (optionally) generate sequence-based negat
     --h5t_location (output directory for h5/h5t)
     --Gen_dinucl_shuffled (build dinucl-preserving shuffled seq sets per TF)
     --sampl_dinucl_matched (sample genome negatives matched on dinucleotide composition)
-    --fasta <reference.fa> (if not using default path)
-- Inputs: Merged (or unmerged) TF/ATAC BEDs, reference genome FASTA, optional pre-generated shuffled FASTAs (nullseq_generate.py / gkmsvm.R alternative pipeline), genome index.
-- Outputs: H5_DIR/<celltype>.h5t (or .h5) plus optional posSet.fa / negSet.fa (if requested / produced separately) in utils/ENCODE_chip.
+    --genomde_file (location of the 2bit genome file (hg38))
+- Inputs: folder with the cell line specific bed files
+- Outputs: H5_DIR/<celltype>.h5t (or .h5)
 - Notes:
   * Sequence encoding stored under unstructured/chr* as int arrays (see data.py for A,T,C,G,N mapping).
   * Dinucleotide shuffled sequences stored as unstructured/dinucl_<TF>_{seqs,chrs}; sampled negatives as unstructured/sampled_negs_<TF>_{chr,pos}.
