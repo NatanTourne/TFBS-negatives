@@ -74,35 +74,61 @@ def create_tf_presence_dataset(bed_file, output_h5t_file, chr_allow_list, tb):
     tf_to_index = {tf: idx for idx, tf in enumerate(unique_tfs)}
 
     # Initialize a binary presence array
-    filtered_peaks = peaks[peaks["chr"].isin(chr_allow_list)]
-    filtered_peaks = filtered_peaks.reset_index(drop=True)
+    filtered_peaks = peaks[peaks["chr"].isin(chr_allow_list)].reset_index(drop=True)
     num_peaks = len(filtered_peaks)
     num_tfs = len(unique_tfs)
     tf_presence = np.zeros((num_tfs, num_peaks), dtype=int)
 
-    # Iterate through each peak and mark its presence in the array
-    chr_old = ""
+    # --- Optimized overlap handling ---
+    # Previous implementation iterated over every peak and re-scanned the full DataFrame to find overlaps
+    # which was O(n^2)
+    # New approach:
+    # 1. Vectorize extraction of arrays (chrom, start, end, tf index).
+    # 2. For each chromosome, sort peaks by start coordinate.
+    # 3. Maintain a deque of "active" peaks whose end > current start (sweep-line algorithm).
+    # 4. For each new peak, all peaks in the active deque overlap it; we update tf_presence symmetrically.
+    # Complexity: O(n log n + k) where k is number of overlapping pairs (unavoidable to at least touch each pair once).
+    from collections import deque
 
-    for peak_index, peak in tqdm(filtered_peaks.iterrows()):
-        tf_index = tf_to_index[peak["TF"]]
-        tf_presence[tf_index, peak_index] = 1
+    starts = filtered_peaks["start"].to_numpy()
+    ends = filtered_peaks["end"].to_numpy()
+    chroms = filtered_peaks["chr"].to_numpy()
+    tf_idx = filtered_peaks["TF"].map(tf_to_index).to_numpy()
 
-        # Handle overlapping peaks #! absurdly inefficient. But fuck it? It only needs to run once for each dataset. n² *4 (😬) 
-        overlapping_peaks = filtered_peaks[
-            (filtered_peaks["chr"] == peak["chr"]) & # same chrom
-            (filtered_peaks["start"] < peak["end"]) & # overlap peak starts before our peak ends
-            (filtered_peaks["end"] > peak["start"]) & # and ends after our peak starts! 
-            (filtered_peaks.index != peak_index) # not the same peak
-        ]
-        for _, overlap_peak in overlapping_peaks.iterrows():
-            overlap_tf_index = tf_to_index[overlap_peak["TF"]]
-            tf_presence[overlap_tf_index, peak_index] = 2
+    # Register intrinsic presence (own TF has value 1 for its column)
+    tf_presence[tf_idx, np.arange(num_peaks)] = 1
 
-        # register peak location
-        middle = int((int(peak["start"]) + int(peak["end"])) / 2)
-        chr_per_peaks.append(peak["chr"])
-        pos_per_peaks.append(middle)
-        len_per_peaks.append(int(peak["end"]) - int(peak["start"]))
+    # Prepare peak location metadata (center and length) up-front using vectorized ops
+    chr_per_peaks = chroms.tolist()
+    pos_per_peaks = ((starts + ends) // 2).astype(int).tolist()
+    len_per_peaks = (ends - starts).astype(int).tolist()
+
+    # Sweep-line per chromosome
+    for chrom in np.unique(chroms):
+        idxs = np.where(chroms == chrom)[0]
+        if idxs.size <= 1:
+            continue  # no possible overlaps
+        # Order peaks on this chromosome by start coordinate
+        order = idxs[np.argsort(starts[idxs], kind='mergesort')]
+        active = deque()  # store indices of peaks with end > current start
+        for i in tqdm(order, desc=f"Chromosome {chrom}", leave=False):
+            current_start = starts[i]
+            # Drop peaks that end before or exactly at current start (no overlap)
+            while active and ends[active[0]] <= current_start:
+                active.popleft()
+            # All remaining in active overlap current peak i
+            if active:
+                ti = tf_idx[i]
+                for j in active:
+                    tj = tf_idx[j]
+                    # Mark that TF of j overlaps column i
+                    if tf_presence[tj, i] == 0:  # avoid redundant writes
+                        tf_presence[tj, i] = 2
+                    # Mark that TF of i overlaps column j
+                    if tf_presence[ti, j] == 0:  # keep own peak value (1) for its column; only set others
+                        tf_presence[ti, j] = 2
+            # Add current peak to active set
+            active.append(i)
 
     # Gather protein names in order they were filled in
     index_to_TF = {v : k for k, v in tf_to_index.items()}
@@ -110,7 +136,7 @@ def create_tf_presence_dataset(bed_file, output_h5t_file, chr_allow_list, tb):
 
     # Gather sequence in int8 format:
     genome = {}
-    for chr_ in chr_allow_list:
+    for chr_ in tqdm(chr_allow_list, desc="Saving chromosomes"):
         genome[chr_] = np.array([mapping[bp] for bp in tb.sequence(chr_)], dtype="int8")
 
     # Save the dataset to an HDF5 file
@@ -169,6 +195,7 @@ def create_tf_presence_dataset(bed_file, output_h5t_file, chr_allow_list, tb):
         )
 
     f.close()
+
 
 def create_dinucl_shuffled_negatives(h5t_loc, num_negs):
     # Ensure the h5t_loc folder exists
