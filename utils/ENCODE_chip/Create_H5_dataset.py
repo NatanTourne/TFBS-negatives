@@ -87,7 +87,6 @@ def create_tf_presence_dataset(bed_file, output_h5t_file, chr_allow_list, tb):
     # 2. For each chromosome, sort peaks by start coordinate.
     # 3. Maintain a deque of "active" peaks whose end > current start (sweep-line algorithm).
     # 4. For each new peak, all peaks in the active deque overlap it; we update tf_presence symmetrically.
-    # Complexity: O(n log n + k) where k is number of overlapping pairs (unavoidable to at least touch each pair once).
     from collections import deque
 
     starts = filtered_peaks["start"].to_numpy()
