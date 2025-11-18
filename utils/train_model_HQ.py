@@ -55,7 +55,7 @@ if __name__ == "__main__":
 
     callback_list = [checkpoint_callback, early_stop]
     run_name = f"{args.celltype}_{args.TF}_CV{args.cross_val_set}_{date}"
-    wandb_logger = WandbLogger(project="Negatives", entity="ntourne", config=vars(args), name=run_name, group=args.group_name)
+    wandb_logger = WandbLogger(project="Negatives_review", entity="ntourne", config=vars(args), name=run_name, group=args.group_name)
 
 
     trainer = pl.Trainer(

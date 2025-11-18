@@ -580,6 +580,9 @@ class DataModule(pl.LightningDataModule):
     def test_dataloader(self):
         return [torch.utils.data.DataLoader(self.test_data, shuffle=True, batch_size=self.batch_size, num_workers=2), torch.utils.data.DataLoader(self.HQ_test_data, shuffle=False, batch_size=self.batch_size, num_workers=2)]
 
+    def predict_dataloader(self):
+        return [torch.utils.data.DataLoader(self.test_data, shuffle=True, batch_size=self.batch_size, num_workers=2), torch.utils.data.DataLoader(self.HQ_test_data, shuffle=False, batch_size=self.batch_size, num_workers=2)]
+    
 class DataModule_HQ(pl.LightningDataModule):
     def __init__(
             self,

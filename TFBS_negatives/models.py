@@ -8,8 +8,7 @@ import warnings
 from functools import partial
 import numpy as np
 from torchmetrics.classification import MultilabelAUROC, MultilabelAveragePrecision
-from torchmetrics.functional.classification import multilabel_average_precision, binary_auroc, binary_average_precision, binary_accuracy
-
+from torchmetrics.functional.classification import multilabel_average_precision, binary_auroc, binary_average_precision, binary_accuracy, binary_matthews_corrcoef, binary_precision, binary_specificity, binary_recall
 # Helper functions and classes
 class MultiLabelLoss(nn.Module):
     def __init__(self,):
@@ -286,16 +285,21 @@ class TFmodel(pl.LightningModule):
 
             AUROC = binary_auroc(y_hat_all, y_all)
             Accuracy = binary_accuracy(y_hat_all, y_all)
+            Average_precision = binary_average_precision(y_hat_all, y_all)
+
 
             self.log("AUROC", AUROC, add_dataloader_idx=False)
             self.log("Accuracy", Accuracy, add_dataloader_idx=False)
+            self.log("Average_precision", Average_precision, add_dataloader_idx=False)
 
             if AUROC > self.best_metrics["AUROC"]:
                 self.best_metrics["AUROC"] = AUROC
                 self.best_metrics["Accuracy"] = Accuracy
+                self.best_metrics["Average_precision"] = Average_precision
                 self.update_best_metrics_HQ = True
                 self.log("best_AUROC", AUROC, add_dataloader_idx=False)
                 self.log("best_Accuracy", Accuracy, add_dataloader_idx=False)
+                self.log("best_Average_precision", Average_precision, add_dataloader_idx=False)
 
         # Process dataloader 1 (HQ validation)
         if self.val_outputs[1]:
@@ -305,15 +309,19 @@ class TFmodel(pl.LightningModule):
 
             AUROC_HQ = binary_auroc(y_hat_HQ_all, y_HQ_all)
             Accuracy_HQ = binary_accuracy(y_hat_HQ_all, y_HQ_all)
+            Average_precision_HQ = binary_average_precision(y_hat_HQ_all, y_HQ_all)
 
             self.log("AUROC_HQ", AUROC_HQ, add_dataloader_idx=False)
             self.log("Accuracy_HQ", Accuracy_HQ, add_dataloader_idx=False)
+            self.log("Average_precision_HQ", Average_precision_HQ, add_dataloader_idx=False)
 
             if self.update_best_metrics_HQ:
                 self.best_metrics["AUROC_HQ"] = AUROC_HQ
                 self.best_metrics["Accuracy_HQ"] = Accuracy_HQ
+                self.best_metrics["Average_precision_HQ"] = Average_precision_HQ
                 self.log("best_AUROC_HQ", AUROC_HQ, add_dataloader_idx=False)
                 self.log("best_Accuracy_HQ", Accuracy_HQ, add_dataloader_idx=False)
+                self.log("best_Average_precision_HQ", Average_precision_HQ, add_dataloader_idx=False)
                 self.update_best_metrics_HQ = False
 
         # Clear memory
@@ -335,16 +343,91 @@ class TFmodel(pl.LightningModule):
         y_hat = torch.cat(self.test_outputs_y_hat, dim=0).squeeze()
         y_true = torch.cat(self.test_outputs_y, dim=0)
         AUROC = binary_auroc(y_hat, y_true)
-        Accuracy = binary_accuracy(y_hat, y_true)
+        Average_precision = binary_average_precision(y_hat, y_true)
         self.log("test_AUROC", AUROC, prog_bar=True)
-        self.log("test_Accuracy", Accuracy, prog_bar=True)
+        self.log("test_Average_precision", Average_precision, prog_bar=True)
 
         y_hat_HQ = torch.cat(self.HQ_test_outputs_y_hat, dim=0).squeeze()
         y_true_HQ = torch.cat(self.HQ_test_outputs_y, dim=0)
         AUROC_HQ = binary_auroc(y_hat_HQ, y_true_HQ)
-        Accuracy_HQ = binary_accuracy(y_hat_HQ, y_true_HQ)
+        Average_precision_HQ = binary_average_precision(y_hat_HQ, y_true_HQ)
         self.log("test_AUROC_HQ", AUROC_HQ, prog_bar=True)
+        self.log("test_Average_precision_HQ", Average_precision_HQ, prog_bar=True)
+
+        # threshold metrics
+        thresholds = torch.arange(0.01, 1, 0.01, dtype=torch.float64)
+        best_mcc, best_prec, best_spec, best_acc, best_rec = -1, -1, -1, -1, -1
+        best_t_mcc, best_t_prec, best_t_spec, best_t_acc, best_t_rec = 0.5, 0.5, 0.5, 0.5, 0.5
+
+        for t in thresholds:
+            t=float(t)
+            mcc = binary_matthews_corrcoef(y_hat, y_true, threshold=t)
+            prec = binary_precision(y_hat, y_true, threshold=t)
+            spec = binary_specificity(y_hat, y_true, threshold=t)
+            acc = binary_accuracy(y_hat, y_true, threshold=t)
+            rec = binary_recall(y_hat, y_true, threshold=t)
+
+            if mcc > best_mcc:
+                best_mcc, best_t_mcc = mcc, t
+            if prec > best_prec:
+                best_prec, best_t_prec = prec, t
+            if spec > best_spec:
+                best_spec, best_t_spec = spec, t
+            if acc > best_acc:
+                best_acc, best_t_acc = acc, t
+            if rec > best_rec:
+                best_rec, best_t_rec = rec, t
+
+        # Log best thresholds (so you can see them in W&B)
+        self.log("best_threshold_MCC", best_t_mcc)
+        self.log("best_threshold_Precision", best_t_prec)
+        self.log("best_threshold_Specificity", best_t_spec)
+        self.log("best_threshold_Accuracy", best_t_acc)
+        self.log("best_threshold_Recall", best_t_rec)
+
+  
+        Matthews_corr_coef = binary_matthews_corrcoef(y_hat, y_true, threshold=best_t_mcc)
+        Precision = binary_precision(y_hat, y_true, threshold=best_t_prec)
+        Specificity = binary_specificity(y_hat, y_true, threshold=best_t_spec)
+        Accuracy = binary_accuracy(y_hat, y_true, threshold=best_t_acc)
+        Recall = binary_recall(y_hat, y_true, threshold=best_t_rec)
+        self.log("test_Matthews_corr_coef", Matthews_corr_coef, prog_bar=True)
+        self.log("test_Precision", Precision, prog_bar=True)
+        self.log("test_Specificity", Specificity, prog_bar=True)
+        self.log("test_Accuracy", Accuracy, prog_bar=True)
+        self.log("test_Recall", Recall, prog_bar=True)
+
+
+
+        # threshold metrics HQ
+        Matthews_corr_coef_HQ = binary_matthews_corrcoef(y_hat_HQ, y_true_HQ, threshold=best_t_mcc)
+        Precision_HQ = binary_precision(y_hat_HQ, y_true_HQ, threshold=best_t_prec)
+        Specificity_HQ = binary_specificity(y_hat_HQ, y_true_HQ, threshold=best_t_spec)
+        Accuracy_HQ = binary_accuracy(y_hat_HQ, y_true_HQ, threshold=best_t_acc) 
+        Recall_HQ = binary_recall(y_hat_HQ, y_true_HQ, threshold=best_t_rec)
+        self.log("test_Matthews_corr_coef_HQ", Matthews_corr_coef_HQ, prog_bar=True)
+        self.log("test_Precision_HQ", Precision_HQ, prog_bar=True)
+        self.log("test_Specificity_HQ", Specificity_HQ, prog_bar=True)
         self.log("test_Accuracy_HQ", Accuracy_HQ, prog_bar=True)
+        self.log("test_Recall_HQ", Recall_HQ, prog_bar=True)
+        
+    def predict_step(self, batch, batch_idx, dataloader_idx=0):
+        """
+        Called by `trainer.predict`. Return a simple dict. Trainer.predict will
+        return a list of these dicts (one element per batch).
+        We return raw logits (not probabilities) and true labels so downstream
+        functions can decide how to convert (sigmoid or softmax).
+        """
+        x_DNA = batch["1/DNA_regions"]
+        y = batch["central"]
+        y_hat = self(x_DNA)  # logits
+
+        # Return CPU tensors to avoid GPU -> CPU issues later
+        return {
+            "logits": y_hat.detach().cpu(),
+            "target": y.detach().cpu(),
+            "dataloader_idx": dataloader_idx
+        }
 
 # TF specific model for HQ only evaluation            
 class TFmodel_HQ(TFmodel):
@@ -353,6 +436,68 @@ class TFmodel_HQ(TFmodel):
         y_hat = torch.cat(self.test_outputs_y_hat, dim=0).squeeze()
         y_true = torch.cat(self.test_outputs_y, dim=0)
         AUROC = binary_auroc(y_hat, y_true)
-        Accuracy = binary_accuracy(y_hat, y_true)
+        Average_precision = binary_average_precision(y_hat, y_true)
         self.log("test_AUROC", AUROC, prog_bar=True)
+        self.log("test_Average_precision", Average_precision, prog_bar=True)
+
+        # threshold metrics
+        thresholds = torch.arange(0.01, 1, 0.01, dtype=torch.float64)
+        best_mcc, best_prec, best_spec, best_acc, best_rec = -1, -1, -1, -1, -1
+        best_t_mcc, best_t_prec, best_t_spec, best_t_acc, best_t_rec = 0.5, 0.5, 0.5, 0.5, 0.5
+
+        for t in thresholds:
+            t=float(t)
+            mcc = binary_matthews_corrcoef(y_hat, y_true, threshold=t)
+            prec = binary_precision(y_hat, y_true, threshold=t)
+            spec = binary_specificity(y_hat, y_true, threshold=t)
+            acc = binary_accuracy(y_hat, y_true, threshold=t)
+            rec = binary_recall(y_hat, y_true, threshold=t)
+
+            if mcc > best_mcc:
+                best_mcc, best_t_mcc = mcc, t
+            if prec > best_prec:
+                best_prec, best_t_prec = prec, t
+            if spec > best_spec:
+                best_spec, best_t_spec = spec, t
+            if acc > best_acc:
+                best_acc, best_t_acc = acc, t
+            if rec > best_rec:
+                best_rec, best_t_rec = rec, t
+
+        # Log best thresholds (so you can see them in W&B)
+        self.log("best_threshold_MCC", best_t_mcc)
+        self.log("best_threshold_Precision", best_t_prec)
+        self.log("best_threshold_Specificity", best_t_spec)
+        self.log("best_threshold_Accuracy", best_t_acc)
+        self.log("best_threshold_Recall", best_t_rec)
+
+  
+        Matthews_corr_coef = binary_matthews_corrcoef(y_hat, y_true, threshold=best_t_mcc)
+        Precision = binary_precision(y_hat, y_true, threshold=best_t_prec)
+        Specificity = binary_specificity(y_hat, y_true, threshold=best_t_spec)
+        Accuracy = binary_accuracy(y_hat, y_true, threshold=best_t_acc)
+        Recall = binary_recall(y_hat, y_true, threshold=best_t_rec)
+        self.log("test_Matthews_corr_coef", Matthews_corr_coef, prog_bar=True)
+        self.log("test_Precision", Precision, prog_bar=True)
+        self.log("test_Specificity", Specificity, prog_bar=True)
         self.log("test_Accuracy", Accuracy, prog_bar=True)
+        self.log("test_Recall", Recall, prog_bar=True)
+
+
+    def predict_step(self, batch, batch_idx, dataloader_idx=0):
+        """
+        Called by `trainer.predict`. Return a simple dict. Trainer.predict will
+        return a list of these dicts (one element per batch).
+        We return raw logits (not probabilities) and true labels so downstream
+        functions can decide how to convert (sigmoid or softmax).
+        """
+        x_DNA = batch["1/DNA_regions"]
+        y = batch["central"]
+        y_hat = self(x_DNA)  # logits
+
+        # Return CPU tensors to avoid GPU -> CPU issues later
+        return {
+            "logits": y_hat.detach().cpu(),
+            "target": y.detach().cpu(),
+            "dataloader_idx": dataloader_idx
+        }
