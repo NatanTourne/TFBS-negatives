@@ -6,7 +6,7 @@ import warnings
 from pytorch_lightning.callbacks import Callback
 from TFBS_negatives.data import DataModule
 import pytorch_lightning as pl
-from TFBS_negatives.models import TFmodel
+from TFBS_negatives.models import SimpleTFmodel
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import EarlyStopping
@@ -42,20 +42,17 @@ if __name__ == "__main__":
 
     file = f"{args.datafolder}/{args.celltype}.h5t"
     Dmod = DataModule(file, TF=args.TF, batch_size=args.batch_size, neg_mode=args.neg_mode, cross_val_set=args.cross_val_set)
-    model = TFmodel(
+    model = SimpleTFmodel(
         learning_rate=args.learning_rate,
-        n_blocks=args.n_blocks,
-        target_hsize=args.target_hsize,
-        progressive_channel_widening=args.PCW,
         DNA_dropout=args.dropout_rate
 
     )
 
     checkpoint_callback = ModelCheckpoint(
-            monitor='AUROC',
+            monitor=args.early_stop_metric,
             dirpath=args.output_dir,
-            filename=args.celltype + "_" + args.TF + "_" + args.neg_mode +"_CV-" + str(args.cross_val_set) + "_" + date + '_{epoch:02d}_{val_loss:.2f}_{AUROC:.2f}',
-            mode="max"
+            filename="CT-" + args.celltype + "_TF-" + args.TF.replace('_', '$') + "_NEG-" + args.neg_mode.replace('_', '$') +"_CV-" + str(args.cross_val_set) + "_LR-"+ str(args.learning_rate) + "_Date-" + date + '_{epoch:02d}-{val_loss:.2f}-{AUROC:.2f}',
+            mode=args.early_stop_mode
             )
 
     early_stop = EarlyStopping(args.early_stop_metric, patience=args.early_stop_patience, mode=args.early_stop_mode)
@@ -79,7 +76,7 @@ if __name__ == "__main__":
         best_model_path = checkpoint_callback.best_model_path  # Re-fetch after training
         if best_model_path:
             print(f"Loading best model from: {best_model_path}")
-            best_model = TFmodel.load_from_checkpoint(best_model_path)
+            best_model = SimpleTFmodel.load_from_checkpoint(best_model_path)
             trainer.test(best_model, datamodule=Dmod)
         else:
             warnings.warn("No best model found — skipping test.")

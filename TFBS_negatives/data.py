@@ -568,8 +568,9 @@ class DataModule(pl.LightningDataModule):
         self.HQ_test_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][2])
 
 
-    def setup(self, stage=None):
-        pass
+    def setup(self, predict_set = "test", stage=None):
+        self.predict_set = predict_set
+        print("\033[91mPredict set:\033[0m", self.predict_set)
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(self.train_data, shuffle=True, batch_size = self.batch_size, num_workers = 2)
@@ -581,7 +582,10 @@ class DataModule(pl.LightningDataModule):
         return [torch.utils.data.DataLoader(self.test_data, shuffle=True, batch_size=self.batch_size, num_workers=2), torch.utils.data.DataLoader(self.HQ_test_data, shuffle=False, batch_size=self.batch_size, num_workers=2)]
 
     def predict_dataloader(self):
-        return [torch.utils.data.DataLoader(self.test_data, shuffle=True, batch_size=self.batch_size, num_workers=2), torch.utils.data.DataLoader(self.HQ_test_data, shuffle=False, batch_size=self.batch_size, num_workers=2)]
+        if self.predict_set == "val":
+            return [torch.utils.data.DataLoader(self.val_data, shuffle=False, batch_size=self.batch_size, num_workers=2), torch.utils.data.DataLoader(self.HQ_val_data, shuffle=False, batch_size=self.batch_size, num_workers=2)]
+        elif self.predict_set == "test":
+            return [torch.utils.data.DataLoader(self.test_data, shuffle=False, batch_size=self.batch_size, num_workers=2), torch.utils.data.DataLoader(self.HQ_test_data, shuffle=False, batch_size=self.batch_size, num_workers=2)]
     
 class DataModule_HQ(pl.LightningDataModule):
     def __init__(
@@ -615,8 +619,8 @@ class DataModule_HQ(pl.LightningDataModule):
         self.test_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][2])
 
 
-    def setup(self, stage=None):
-        pass
+    def setup(self, predict_set = "test", stage=None):
+        self.predict_set = predict_set
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(self.train_data, shuffle=True, batch_size = self.batch_size, num_workers = 2)
@@ -626,6 +630,12 @@ class DataModule_HQ(pl.LightningDataModule):
 
     def test_dataloader(self):
         return torch.utils.data.DataLoader(self.test_data, shuffle=False, batch_size=self.batch_size, num_workers=2)
+
+    def predict_dataloader(self):
+        if self.predict_set == "val":
+            return torch.utils.data.DataLoader(self.val_data, shuffle=False, batch_size=self.batch_size, num_workers=2)
+        elif self.predict_set == "test":
+            return torch.utils.data.DataLoader(self.test_data, shuffle=False, batch_size=self.batch_size, num_workers=2)
 
 class DataModule_sanity_check(DataModule):
     def val_dataloader(self):
