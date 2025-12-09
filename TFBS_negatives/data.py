@@ -568,9 +568,8 @@ class DataModule(pl.LightningDataModule):
         self.HQ_test_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][2])
 
 
-    def setup(self, predict_set = "test", stage=None):
-        self.predict_set = predict_set
-        print("\033[91mPredict set:\033[0m", self.predict_set)
+    def setup(self, stage=None):
+        pass
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(self.train_data, shuffle=True, batch_size = self.batch_size, num_workers = 2)
@@ -581,7 +580,12 @@ class DataModule(pl.LightningDataModule):
     def test_dataloader(self):
         return [torch.utils.data.DataLoader(self.test_data, shuffle=True, batch_size=self.batch_size, num_workers=2), torch.utils.data.DataLoader(self.HQ_test_data, shuffle=False, batch_size=self.batch_size, num_workers=2)]
 
+    def set_predict_set(self, predict_set):
+        self.predict_set = predict_set
+        print("\033[91mSet predict set as:\033[0m", self.predict_set)
+
     def predict_dataloader(self):
+        print("\033[91mUsing predict set:\033[0m", self.predict_set)
         if self.predict_set == "val":
             return [torch.utils.data.DataLoader(self.val_data, shuffle=False, batch_size=self.batch_size, num_workers=2), torch.utils.data.DataLoader(self.HQ_val_data, shuffle=False, batch_size=self.batch_size, num_workers=2)]
         elif self.predict_set == "test":
@@ -619,8 +623,8 @@ class DataModule_HQ(pl.LightningDataModule):
         self.test_data = HQ_dataset(f, TF=TF, subset=all_orderings[cross_val_set][2])
 
 
-    def setup(self, predict_set = "test", stage=None):
-        self.predict_set = predict_set
+    def setup(self, stage=None):
+        pass
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(self.train_data, shuffle=True, batch_size = self.batch_size, num_workers = 2)
@@ -631,7 +635,12 @@ class DataModule_HQ(pl.LightningDataModule):
     def test_dataloader(self):
         return torch.utils.data.DataLoader(self.test_data, shuffle=False, batch_size=self.batch_size, num_workers=2)
 
+    def set_predict_set(self, predict_set):
+        self.predict_set = predict_set
+        print("\033[91mSet predict set as:\033[0m", self.predict_set)
+
     def predict_dataloader(self):
+        print("\033[91mUsing predict set:\033[0m", self.predict_set)
         if self.predict_set == "val":
             return torch.utils.data.DataLoader(self.val_data, shuffle=False, batch_size=self.batch_size, num_workers=2)
         elif self.predict_set == "test":

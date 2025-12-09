@@ -184,6 +184,8 @@ class EnformerConvStack(nn.Module):
 
     def forward(self, x):
         return self.encoder(x)
+   
+
 
 # TF specific model 
 class TFmodel(pl.LightningModule):
@@ -526,3 +528,29 @@ class SimpleTFmodel(TFmodel):
             self.conv,
             self.classifier
         )
+
+
+class TFmodel2(TFmodel):
+    def __init__(
+        self,
+        hidden_sizes=[32,64],
+        learning_rate=1e-4,
+    ):
+        super(TFmodel2, self).__init__(
+            learning_rate=learning_rate
+        )
+        layers = [
+            nn.Conv1d(4, hidden_sizes[0], 9, padding=9 // 2),
+            Residual(ConvBlock(hidden_sizes[0], kernel_size=1)),
+            AttentionPool(hidden_sizes[0]),
+
+            ConvBlock(hidden_sizes[0], dim_out=hidden_sizes[1], kernel_size=9),
+            Residual(ConvBlock(hidden_sizes[1], kernel_size=1)),
+            GlobalPool(pooled_axis=2),
+            nn.Flatten(),
+            nn.Dropout(0.25),
+            nn.Linear(hidden_sizes[1], 1),
+        ]
+        self.DNA_branch = nn.Sequential(*layers)
+
+
