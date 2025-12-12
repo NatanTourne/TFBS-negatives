@@ -554,3 +554,52 @@ class TFmodel2(TFmodel):
         self.DNA_branch = nn.Sequential(*layers)
 
 
+
+# TF specific model for HQ only evaluation            
+class TFmodel2_HQ(TFmodel2):
+    def on_test_epoch_end(self):
+        y_hat = torch.cat(self.test_outputs_y_hat, dim=0).squeeze()
+        y_true = torch.cat(self.test_outputs_y, dim=0)
+        AUROC = binary_auroc(y_hat, y_true)
+        Average_precision = binary_average_precision(y_hat, y_true)
+        self.log("test_AUROC", AUROC, prog_bar=True)
+        self.log("test_Average_precision", Average_precision, prog_bar=True)
+
+        y_hat_HQ = torch.cat(self.HQ_test_outputs_y_hat, dim=0).squeeze()
+        y_true_HQ = torch.cat(self.HQ_test_outputs_y, dim=0)
+        AUROC_HQ = binary_auroc(y_hat_HQ, y_true_HQ)
+        Average_precision_HQ = binary_average_precision(y_hat_HQ, y_true_HQ)
+        self.log("test_AUROC_HQ", AUROC_HQ, prog_bar=True)
+        self.log("test_Average_precision_HQ", Average_precision_HQ, prog_bar=True)
+
+    
+  
+        Matthews_corr_coef = binary_matthews_corrcoef(y_hat, y_true, threshold=self.best_thresholds["MCC"])
+        Precision = binary_precision(y_hat, y_true, threshold=self.best_thresholds["Precision"])
+        Specificity = binary_specificity(y_hat, y_true, threshold=self.best_thresholds["Specificity"])
+        Accuracy = binary_accuracy(y_hat, y_true, threshold=self.best_thresholds["Accuracy"])
+        Recall = binary_recall(y_hat, y_true, threshold=self.best_thresholds["Recall"])
+        self.log("test_Matthews_corr_coef", Matthews_corr_coef, prog_bar=True)
+        self.log("test_Precision", Precision, prog_bar=True)
+        self.log("test_Specificity", Specificity, prog_bar=True)
+        self.log("test_Accuracy", Accuracy, prog_bar=True)
+        self.log("test_Recall", Recall, prog_bar=True)
+
+
+    def predict_step(self, batch, batch_idx, dataloader_idx=0):
+        """
+        Called by `trainer.predict`. Return a simple dict. Trainer.predict will
+        return a list of these dicts (one element per batch).
+        We return raw logits (not probabilities) and true labels so downstream
+        functions can decide how to convert (sigmoid or softmax).
+        """
+        x_DNA = batch["1/DNA_regions"]
+        y = batch["central"]
+        y_hat = self(x_DNA)  # logits
+
+        # Return CPU tensors to avoid GPU -> CPU issues later
+        return {
+            "logits": y_hat.detach().cpu(),
+            "target": y.detach().cpu(),
+            "dataloader_idx": dataloader_idx
+        }
