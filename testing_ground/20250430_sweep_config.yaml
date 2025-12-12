@@ -1,0 +1,19 @@
+sweep_config = {
+    'method': 'grid',  # or 'random', 'grid'
+    'metric': {
+        'name': 'val_loss',  # change this if you're logging a different metric
+        'goal': 'minimize'
+    },
+    'parameters': {
+        'learning_rate': {
+            'min': 1e-5,
+            'max': 1e-2
+        },
+        'target_hsize_DNA': {
+            'values': [32, 64, 128]
+        },
+        'n_blocks_DNA': {
+            'values': [1, 2, 3]
+        }
+    }
+}
