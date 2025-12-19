@@ -6,7 +6,7 @@ import warnings
 from pytorch_lightning.callbacks import Callback
 from TFBS_negatives.data import DataModule
 import pytorch_lightning as pl
-from TFBS_negatives.models import TFmodel
+from TFBS_negatives.models import TFmodel2
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import EarlyStopping
@@ -32,7 +32,7 @@ if __name__ == "__main__":
 
     file = f"{args.datafolder}/{args.celltype}.h5t"
     Dmod = DataModule(file, TF=args.TF, batch_size=args.batch_size, neg_mode=args.neg_mode, cross_val_set=args.cross_val_set)
-    model = TFmodel.load_from_checkpoint(args.ckpt_path)
+    model = TFmodel2.load_from_checkpoint(args.ckpt_path)
 
 
     run_name = f"CROSS-CELL-PERF_GM12878-{args.celltype}_{args.TF}_{args.neg_mode}_CV{args.cross_val_set}_{date}"

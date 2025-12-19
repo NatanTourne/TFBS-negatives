@@ -258,7 +258,7 @@ class TFmodel(pl.LightningModule):
         y = train_batch["central"]
 
         y_hat = self(x_DNA)
-        loss = self.loss_function(y_hat.squeeze(), y.float().squeeze())
+        loss = self.loss_function(y_hat.view(-1), y.float().view(-1))
 
 
         self.log('train_loss', loss, prog_bar=True)
@@ -272,7 +272,7 @@ class TFmodel(pl.LightningModule):
 
         self.val_outputs[dataloader_idx].append((y_hat.detach(), y.detach()))
 
-        loss = self.loss_function(y_hat.squeeze(), y.float().squeeze())
+        loss = self.loss_function(y_hat.view(-1), y.float().view(-1))
 
         if dataloader_idx == 0:
             self.log('val_loss', loss, prog_bar=True, add_dataloader_idx=False)
@@ -283,8 +283,8 @@ class TFmodel(pl.LightningModule):
         # Process dataloader 0 (standard validation)
         if self.val_outputs[0]:
             y_hat_all, y_all = zip(*self.val_outputs[0])
-            y_hat_all = torch.cat(y_hat_all).squeeze()
-            y_all = torch.cat(y_all).squeeze()
+            y_hat_all = torch.cat(y_hat_all).view(-1)
+            y_all = torch.cat(y_all).view(-1)
 
             AUROC = binary_auroc(y_hat_all, y_all)
             Average_precision = binary_average_precision(y_hat_all, y_all)
@@ -343,8 +343,8 @@ class TFmodel(pl.LightningModule):
         # Process dataloader 1 (HQ validation)
         if self.val_outputs[1]:
             y_hat_HQ_all, y_HQ_all = zip(*self.val_outputs[1])
-            y_hat_HQ_all = torch.cat(y_hat_HQ_all).squeeze()
-            y_HQ_all = torch.cat(y_HQ_all).squeeze()
+            y_hat_HQ_all = torch.cat(y_hat_HQ_all).view(-1)
+            y_HQ_all = torch.cat(y_HQ_all).view(-1)
 
 
             AUROC_HQ = binary_auroc(y_hat_HQ_all, y_HQ_all)
@@ -389,15 +389,21 @@ class TFmodel(pl.LightningModule):
             self.HQ_test_outputs_y.append(y)
             self.HQ_test_outputs_y_hat.append(y_hat)
 
+    def on_test_epoch_start(self):
+        self.test_outputs_y = []
+        self.test_outputs_y_hat = []
+        self.HQ_test_outputs_y = []
+        self.HQ_test_outputs_y_hat = []
+        
     def on_test_epoch_end(self):
-        y_hat = torch.cat(self.test_outputs_y_hat, dim=0).squeeze()
+        y_hat = torch.cat(self.test_outputs_y_hat, dim=0).view(-1)
         y_true = torch.cat(self.test_outputs_y, dim=0)
         AUROC = binary_auroc(y_hat, y_true)
         Average_precision = binary_average_precision(y_hat, y_true)
         self.log("test_AUROC", AUROC, prog_bar=True)
         self.log("test_Average_precision", Average_precision, prog_bar=True)
 
-        y_hat_HQ = torch.cat(self.HQ_test_outputs_y_hat, dim=0).squeeze()
+        y_hat_HQ = torch.cat(self.HQ_test_outputs_y_hat, dim=0).view(-1)
         y_true_HQ = torch.cat(self.HQ_test_outputs_y, dim=0)
         AUROC_HQ = binary_auroc(y_hat_HQ, y_true_HQ)
         Average_precision_HQ = binary_average_precision(y_hat_HQ, y_true_HQ)
@@ -420,7 +426,7 @@ class TFmodel(pl.LightningModule):
 
 
         # threshold metrics HQ
-        Matthews_corr_coef_HQ = binary_matthews_corrcoef(y_hat_HQ, y_true_HQ, threshold=self.best_thresholds["Recall"])
+        Matthews_corr_coef_HQ = binary_matthews_corrcoef(y_hat_HQ, y_true_HQ, threshold=self.best_thresholds["MCC"])
         Precision_HQ = binary_precision(y_hat_HQ, y_true_HQ, threshold=self.best_thresholds["Precision"])
         Specificity_HQ = binary_specificity(y_hat_HQ, y_true_HQ, threshold=self.best_thresholds["Specificity"])
         Accuracy_HQ = binary_accuracy(y_hat_HQ, y_true_HQ, threshold=self.best_thresholds["Accuracy"]) 
@@ -448,18 +454,25 @@ class TFmodel(pl.LightningModule):
             "target": y.detach().cpu(),
             "dataloader_idx": dataloader_idx
         }
+    # def on_save_checkpoint(self, checkpoint):
+    #     checkpoint["best_thresholds"] = self.best_thresholds
+    #     checkpoint["best_metrics"] = self.best_metrics
+
+    # def on_load_checkpoint(self, checkpoint):
+    #     self.best_thresholds = checkpoint["best_thresholds"]
+    #     self.best_metrics = checkpoint["best_metrics"]
 
 # TF specific model for HQ only evaluation            
 class TFmodel_HQ(TFmodel):
     def on_test_epoch_end(self):
-        y_hat = torch.cat(self.test_outputs_y_hat, dim=0).squeeze()
+        y_hat = torch.cat(self.test_outputs_y_hat, dim=0).view(-1)
         y_true = torch.cat(self.test_outputs_y, dim=0)
         AUROC = binary_auroc(y_hat, y_true)
         Average_precision = binary_average_precision(y_hat, y_true)
         self.log("test_AUROC", AUROC, prog_bar=True)
         self.log("test_Average_precision", Average_precision, prog_bar=True)
 
-        y_hat_HQ = torch.cat(self.HQ_test_outputs_y_hat, dim=0).squeeze()
+        y_hat_HQ = torch.cat(self.HQ_test_outputs_y_hat, dim=0).view(-1)
         y_true_HQ = torch.cat(self.HQ_test_outputs_y, dim=0)
         AUROC_HQ = binary_auroc(y_hat_HQ, y_true_HQ)
         Average_precision_HQ = binary_average_precision(y_hat_HQ, y_true_HQ)
@@ -558,19 +571,19 @@ class TFmodel2(TFmodel):
 # TF specific model for HQ only evaluation            
 class TFmodel2_HQ(TFmodel2):
     def on_test_epoch_end(self):
-        y_hat = torch.cat(self.test_outputs_y_hat, dim=0).squeeze()
+        y_hat = torch.cat(self.test_outputs_y_hat, dim=0).view(-1)
         y_true = torch.cat(self.test_outputs_y, dim=0)
         AUROC = binary_auroc(y_hat, y_true)
         Average_precision = binary_average_precision(y_hat, y_true)
         self.log("test_AUROC", AUROC, prog_bar=True)
         self.log("test_Average_precision", Average_precision, prog_bar=True)
 
-        y_hat_HQ = torch.cat(self.HQ_test_outputs_y_hat, dim=0).squeeze()
-        y_true_HQ = torch.cat(self.HQ_test_outputs_y, dim=0)
-        AUROC_HQ = binary_auroc(y_hat_HQ, y_true_HQ)
-        Average_precision_HQ = binary_average_precision(y_hat_HQ, y_true_HQ)
-        self.log("test_AUROC_HQ", AUROC_HQ, prog_bar=True)
-        self.log("test_Average_precision_HQ", Average_precision_HQ, prog_bar=True)
+        # y_hat_HQ = torch.cat(self.HQ_test_outputs_y_hat, dim=0).view(-1)
+        # y_true_HQ = torch.cat(self.HQ_test_outputs_y, dim=0)
+        # AUROC_HQ = binary_auroc(y_hat_HQ, y_true_HQ)
+        # Average_precision_HQ = binary_average_precision(y_hat_HQ, y_true_HQ)
+        # self.log("test_AUROC_HQ", AUROC_HQ, prog_bar=True)
+        # self.log("test_Average_precision_HQ", Average_precision_HQ, prog_bar=True)
 
     
   
