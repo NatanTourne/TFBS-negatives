@@ -27,8 +27,7 @@ if __name__ == "__main__":
     parser.add_argument("--cross_val_set", type=int, default=0, help="Which of the 6 cross val combinations to take.")
     parser.add_argument("--datafolder", type=str, default="/data/home/natant/Negatives/Data/Encode690/ENCODE_hg38_subset_101bp_celltypes_ATAC_H5_all_chr/", help="Path to the data folder.")
     parser.add_argument("--learning_rate", type=float, default=0.0001, help="Learning rate for the model.")
-    parser.add_argument("--n_blocks", type=int, default=2, help="Number of blocks in the model.")
-    parser.add_argument("--target_hsize", type=int, default=128, help="Target hidden size for the model.")
+    parser.add_argument("--wandb_project", type=str, default="Negatives_review", help="Weights & Biases project name.")
     parser.add_argument("--group_name", type=str, default="default", help="Group name for the model.")
     parser.add_argument("--test", action="store_true", help="Run in test mode.")
 
@@ -38,24 +37,20 @@ if __name__ == "__main__":
 
     file = f"{args.datafolder}/{args.celltype}.h5t"
     Dmod = DataModule_HQ(file, TF=args.TF, batch_size=args.batch_size, cross_val_set=args.cross_val_set)
-    model = TFmodel_HQ(
-        learning_rate=args.learning_rate,
-        n_blocks=args.n_blocks,
-        target_hsize=args.target_hsize
-    )
+    model = TFmodel_HQ(learning_rate=args.learning_rate)
 
     checkpoint_callback = ModelCheckpoint(
-            monitor='AUROC',
+            monitor=args.early_stop_metric,
             dirpath=args.output_dir,
-            filename=args.celltype + "_" + args.TF +"_CV-" + str(args.cross_val_set) + "_" + date + '_{epoch:02d}_{val_loss:.2f}_{AUROC:.2f}',
-            mode="max"
+            filename="CT-" + args.celltype + "_TF-" + args.TF.replace('_', '$') + "_NEG-" + "HQ" +"_CV-" + str(args.cross_val_set) + "_LR-"+ str(args.learning_rate) + "_Date-" + date + '_{epoch:02d}-{val_loss:.2f}-{AUROC:.2f}',
+            mode=args.early_stop_mode
             )
 
     early_stop = EarlyStopping(args.early_stop_metric, patience=args.early_stop_patience, mode=args.early_stop_mode)
 
     callback_list = [checkpoint_callback, early_stop]
-    run_name = f"{args.celltype}_{args.TF}_CV{args.cross_val_set}_{date}"
-    wandb_logger = WandbLogger(project="Negatives_review", entity="ntourne", config=vars(args), name=run_name, group=args.group_name)
+    run_name = f"{args.celltype}_{args.TF}_HQ_CV{args.cross_val_set}_{date}"
+    wandb_logger = WandbLogger(project=args.wandb_project, entity="ntourne", config=vars(args), name=run_name, group=args.group_name)
 
 
     trainer = pl.Trainer(

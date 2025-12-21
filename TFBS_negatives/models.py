@@ -191,17 +191,8 @@ class EnformerConvStack(nn.Module):
 class TFmodel(pl.LightningModule):
     def __init__(
         self,
-
-        # Model architecture
-        target_hsize=64,
-        n_blocks=2,
-        DNA_kernel_size=9,
-        progressive_channel_widening=True,
-        pooling_between_blocks=True,
-        DNA_dropout=0.25,
-
-        # training
-        learning_rate=1e-5,
+        hidden_sizes=[32, 64],
+        learning_rate=1e-4,
     ):
         super(TFmodel, self).__init__()
         self.learning_rate = learning_rate
@@ -221,16 +212,19 @@ class TFmodel(pl.LightningModule):
         
         # DNA branch
     
-        self.DNA_branch = EnformerConvStack(
-            input_hsize = 4,
-            target_hsize =target_hsize, 
-            n_blocks = n_blocks,
-            kernel_size = DNA_kernel_size, 
-            latent_size = 1, # because TF specific model
-            dropout=DNA_dropout,
-            progressive_channel_widening=progressive_channel_widening,
-            pooling_between_blocks=pooling_between_blocks,
-        )
+        layers = [
+            nn.Conv1d(4, hidden_sizes[0], 9, padding=9 // 2),
+            Residual(ConvBlock(hidden_sizes[0], kernel_size=1)),
+            AttentionPool(hidden_sizes[0]),
+
+            ConvBlock(hidden_sizes[0], dim_out=hidden_sizes[1], kernel_size=9),
+            Residual(ConvBlock(hidden_sizes[1], kernel_size=1)),
+            GlobalPool(pooled_axis=2),
+            nn.Flatten(),
+            nn.Dropout(0.25),
+            nn.Linear(hidden_sizes[1], 1),
+        ]
+        self.DNA_branch = nn.Sequential(*layers)
         self.test_outputs_y = []
         self.test_outputs_y_hat = []
         self.HQ_test_outputs_y = []
@@ -454,13 +448,14 @@ class TFmodel(pl.LightningModule):
             "target": y.detach().cpu(),
             "dataloader_idx": dataloader_idx
         }
-    # def on_save_checkpoint(self, checkpoint):
-    #     checkpoint["best_thresholds"] = self.best_thresholds
-    #     checkpoint["best_metrics"] = self.best_metrics
+    
+    def on_save_checkpoint(self, checkpoint):
+        checkpoint["best_thresholds"] = self.best_thresholds
+        checkpoint["best_metrics"] = self.best_metrics
 
-    # def on_load_checkpoint(self, checkpoint):
-    #     self.best_thresholds = checkpoint["best_thresholds"]
-    #     self.best_metrics = checkpoint["best_metrics"]
+    def on_load_checkpoint(self, checkpoint):
+        self.best_thresholds = checkpoint["best_thresholds"]
+        self.best_metrics = checkpoint["best_metrics"]
 
 # TF specific model for HQ only evaluation            
 class TFmodel_HQ(TFmodel):
@@ -471,14 +466,6 @@ class TFmodel_HQ(TFmodel):
         Average_precision = binary_average_precision(y_hat, y_true)
         self.log("test_AUROC", AUROC, prog_bar=True)
         self.log("test_Average_precision", Average_precision, prog_bar=True)
-
-        y_hat_HQ = torch.cat(self.HQ_test_outputs_y_hat, dim=0).view(-1)
-        y_true_HQ = torch.cat(self.HQ_test_outputs_y, dim=0)
-        AUROC_HQ = binary_auroc(y_hat_HQ, y_true_HQ)
-        Average_precision_HQ = binary_average_precision(y_hat_HQ, y_true_HQ)
-        self.log("test_AUROC_HQ", AUROC_HQ, prog_bar=True)
-        self.log("test_Average_precision_HQ", Average_precision_HQ, prog_bar=True)
-
     
   
         Matthews_corr_coef = binary_matthews_corrcoef(y_hat, y_true, threshold=self.best_thresholds["MCC"])
@@ -511,108 +498,3 @@ class TFmodel_HQ(TFmodel):
             "dataloader_idx": dataloader_idx
         }
     
-
-class SimpleTFmodel(TFmodel):
-    def __init__(
-        self,
-        learning_rate=1e-4,
-        DNA_dropout=0.25,
-    ):
-        super(SimpleTFmodel, self).__init__(
-            learning_rate=learning_rate
-        )
-        self.conv = nn.Sequential(
-            nn.Conv1d(4, 32, kernel_size=7, padding=3),
-            nn.ReLU(),
-            nn.MaxPool1d(2),
-
-            nn.Conv1d(32, 64, kernel_size=5, padding=2),
-            nn.ReLU(),
-            nn.AdaptiveMaxPool1d(1)         
-        )
-
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Dropout(DNA_dropout),
-            nn.Linear(64, 1)
-        )
-
-        self.DNA_branch = nn.Sequential(
-            self.conv,
-            self.classifier
-        )
-
-
-class TFmodel2(TFmodel):
-    def __init__(
-        self,
-        hidden_sizes=[32,64],
-        learning_rate=1e-4,
-    ):
-        super(TFmodel2, self).__init__(
-            learning_rate=learning_rate
-        )
-        layers = [
-            nn.Conv1d(4, hidden_sizes[0], 9, padding=9 // 2),
-            Residual(ConvBlock(hidden_sizes[0], kernel_size=1)),
-            AttentionPool(hidden_sizes[0]),
-
-            ConvBlock(hidden_sizes[0], dim_out=hidden_sizes[1], kernel_size=9),
-            Residual(ConvBlock(hidden_sizes[1], kernel_size=1)),
-            GlobalPool(pooled_axis=2),
-            nn.Flatten(),
-            nn.Dropout(0.25),
-            nn.Linear(hidden_sizes[1], 1),
-        ]
-        self.DNA_branch = nn.Sequential(*layers)
-
-
-
-# TF specific model for HQ only evaluation            
-class TFmodel2_HQ(TFmodel2):
-    def on_test_epoch_end(self):
-        y_hat = torch.cat(self.test_outputs_y_hat, dim=0).view(-1)
-        y_true = torch.cat(self.test_outputs_y, dim=0)
-        AUROC = binary_auroc(y_hat, y_true)
-        Average_precision = binary_average_precision(y_hat, y_true)
-        self.log("test_AUROC", AUROC, prog_bar=True)
-        self.log("test_Average_precision", Average_precision, prog_bar=True)
-
-        # y_hat_HQ = torch.cat(self.HQ_test_outputs_y_hat, dim=0).view(-1)
-        # y_true_HQ = torch.cat(self.HQ_test_outputs_y, dim=0)
-        # AUROC_HQ = binary_auroc(y_hat_HQ, y_true_HQ)
-        # Average_precision_HQ = binary_average_precision(y_hat_HQ, y_true_HQ)
-        # self.log("test_AUROC_HQ", AUROC_HQ, prog_bar=True)
-        # self.log("test_Average_precision_HQ", Average_precision_HQ, prog_bar=True)
-
-    
-  
-        Matthews_corr_coef = binary_matthews_corrcoef(y_hat, y_true, threshold=self.best_thresholds["MCC"])
-        Precision = binary_precision(y_hat, y_true, threshold=self.best_thresholds["Precision"])
-        Specificity = binary_specificity(y_hat, y_true, threshold=self.best_thresholds["Specificity"])
-        Accuracy = binary_accuracy(y_hat, y_true, threshold=self.best_thresholds["Accuracy"])
-        Recall = binary_recall(y_hat, y_true, threshold=self.best_thresholds["Recall"])
-        self.log("test_Matthews_corr_coef", Matthews_corr_coef, prog_bar=True)
-        self.log("test_Precision", Precision, prog_bar=True)
-        self.log("test_Specificity", Specificity, prog_bar=True)
-        self.log("test_Accuracy", Accuracy, prog_bar=True)
-        self.log("test_Recall", Recall, prog_bar=True)
-
-
-    def predict_step(self, batch, batch_idx, dataloader_idx=0):
-        """
-        Called by `trainer.predict`. Return a simple dict. Trainer.predict will
-        return a list of these dicts (one element per batch).
-        We return raw logits (not probabilities) and true labels so downstream
-        functions can decide how to convert (sigmoid or softmax).
-        """
-        x_DNA = batch["1/DNA_regions"]
-        y = batch["central"]
-        y_hat = self(x_DNA)  # logits
-
-        # Return CPU tensors to avoid GPU -> CPU issues later
-        return {
-            "logits": y_hat.detach().cpu(),
-            "target": y.detach().cpu(),
-            "dataloader_idx": dataloader_idx
-        }

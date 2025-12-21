@@ -27,10 +27,6 @@ if __name__ == "__main__":
     parser.add_argument("--cross_val_set", type=int, default=0, help="Which of the 6 cross val combinations to take.")
     parser.add_argument("--datafolder", type=str, default="/data/home/natant/Negatives/Data/Encode690/ENCODE_hg38_subset_101bp_celltypes_ATAC_H5_all_chr/", help="Path to the data folder.")
     parser.add_argument("--learning_rate", type=float, default=0.0001, help="Learning rate for the model.")
-    parser.add_argument("--n_blocks", type=int, default=2, help="Number of blocks in the model.")
-    parser.add_argument("--target_hsize", type=int, default=128, help="Target hidden size for the model.")
-    parser.add_argument("--PCW", type=bool, default=True, help="Progressive channel widening, default true")
-    parser.add_argument("--dropout_rate", type=float, default=0.25, help="Dropout rate for the model.")
     parser.add_argument("--wandb_project", type=str, default="Negatives_review", help="Weights & Biases project name.")
     parser.add_argument("--group_name", type=str, default="default", help="Group name for the model.")
     parser.add_argument("--test", action="store_true", help="Whether to evaluate test set after training.")
@@ -42,20 +38,13 @@ if __name__ == "__main__":
 
     file = f"{args.datafolder}/{args.celltype}.h5t"
     Dmod = DataModule(file, TF=args.TF, batch_size=args.batch_size, neg_mode=args.neg_mode, cross_val_set=args.cross_val_set)
-    model = TFmodel(
-        learning_rate=args.learning_rate,
-        n_blocks=args.n_blocks,
-        target_hsize=args.target_hsize,
-        progressive_channel_widening=args.PCW,
-        DNA_dropout=args.dropout_rate
-
-    )
+    model = TFmodel(learning_rate=args.learning_rate)
 
     checkpoint_callback = ModelCheckpoint(
-            monitor='AUROC',
+            monitor=args.early_stop_metric,
             dirpath=args.output_dir,
-            filename=args.celltype + "_" + args.TF + "_" + args.neg_mode +"_CV-" + str(args.cross_val_set) + "_" + date + '_{epoch:02d}_{val_loss:.2f}_{AUROC:.2f}',
-            mode="max"
+            filename="CT-" + args.celltype + "_TF-" + args.TF.replace('_', '$') + "_NEG-" + args.neg_mode.replace('_', '$') +"_CV-" + str(args.cross_val_set) + "_LR-"+ str(args.learning_rate) + "_Date-" + date + '_{epoch:02d}-{val_loss:.2f}-{AUROC:.2f}',
+            mode=args.early_stop_mode
             )
 
     early_stop = EarlyStopping(args.early_stop_metric, patience=args.early_stop_patience, mode=args.early_stop_mode)

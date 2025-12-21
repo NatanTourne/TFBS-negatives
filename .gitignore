@@ -167,8 +167,10 @@ cython_debug/
 
 # for publication
 Results/
-#testing_ground/
+testing_ground/
 Results/*
-#testing_ground/*
+testing_ground/*
 .Results
-#.testing_ground
+.testing_ground
+.testing_ground/
+.testing_ground/*

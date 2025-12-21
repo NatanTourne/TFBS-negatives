@@ -1,10 +1,10 @@
-# To Bind or Not to Bind: How Negative Sampling Shapes Transcription Factor Binding Site Prediction Performance
+# How Negative Sampling Shapes the Performance of Transcription Factor Binding Site Prediction Models
 
 This repository accompanies the study investigating how different negative sampling strategies impact transcription factor (TF) binding site (TFBS) prediction. It provides:
 - Data processing scripts to build per cell-line TF/ATAC peak datasets in HDF5 / h5torch format
 - Multiple negative sampling regimes implemented as dataset classes
 - A lightweight Enformer-inspired convolutional architecture (without transformer) for binary TF binding prediction
-- Training utilities for standard and High-Quality (HQ) datasets, with optional limitation of positives for ablation / scaling experiments
+- Training utilities for standard and High-Quality (HQ) datasets
 
 ## 1. Installation
 
@@ -122,10 +122,8 @@ python utils/train_model.py \
   --celltype GM12878 \
   --neg_mode dinucl_shuffled \
   --devices 0 \
-  --batch_size 256 \
+  --batch_size 128 \
   --learning_rate 1e-4 \
-  --n_blocks 4 \
-  --target_hsize 256 \
   --early_stop_metric AUROC \
   --early_stop_mode max \
   --early_stop_patience 10 \
@@ -140,10 +138,8 @@ python utils/train_model_HQ.py \
   --TF CTCF \
   --celltype GM12878 \
   --devices 0 \
-  --batch_size 256 \
+  --batch_size 128 \
   --learning_rate 1e-4 \
-  --n_blocks 4 \
-  --target_hsize 256 \
   --cross_val_set 0 \
   --group_name hq_baseline \
   --test
